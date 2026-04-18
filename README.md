@@ -148,14 +148,15 @@ When a user types `feature/payments-v2` in the `RELEASE_BRANCH` field, the plugi
 
 ### Supported Parameter Types
 
-| Type          | DSL Function        | Reloaded Fields |
-| ------------- | ------------------- | --------------- |
-| String        | `string(...)`       | `defaultValue`  |
-| Boolean       | `booleanParam(...)` | `defaultValue`  |
-| Choice        | `choice(...)`       | visibility      |
-| Image Tag     | `imageTag(...)`     | `defaultTag`    |
-| Active Choice | `activeChoice(...)` | visibility      |
-| Separator     | `separator(...)`    | visibility      |
+| Type          | DSL Function        | Reloaded Fields             |
+| ------------- | ------------------- | --------------------------- |
+| String        | `string(...)`       | `defaultValue`              |
+| Boolean       | `booleanParam(...)` | `defaultValue`              |
+| Password      | `password(...)`     | `defaultValue`              |
+| Choice        | `choice(...)`       | `choices` + default (first) |
+| Image Tag     | `imageTag(...)`     | `defaultTag`                |
+| Active Choice | `activeChoice(...)` | visibility                  |
+| Separator     | `separator(...)`    | visibility                  |
 
 ### Job Configuration UI
 

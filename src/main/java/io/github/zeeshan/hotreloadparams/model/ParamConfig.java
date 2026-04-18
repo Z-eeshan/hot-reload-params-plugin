@@ -67,6 +67,16 @@ public class ParamConfig implements Serializable {
         return pc;
     }
 
+    /** For password parameters. */
+    public static ParamConfig password(String name, String defaultValue, String description) {
+        ParamConfig pc = new ParamConfig();
+        pc.type = ParamType.PASSWORD;
+        pc.name = name;
+        pc.defaultValue = defaultValue != null ? defaultValue : "";
+        pc.description = description != null ? description : "";
+        return pc;
+    }
+
     /** For imageTag parameters. */
     public static ParamConfig imageTag(String name, String image, String registry,
                                         String defaultTag, String filter, String description) {

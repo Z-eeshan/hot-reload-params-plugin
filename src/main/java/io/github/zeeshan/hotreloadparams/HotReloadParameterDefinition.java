@@ -176,6 +176,9 @@ public class HotReloadParameterDefinition extends ParameterDefinition {
                         if (p.image != null) obj.put("image", p.image);
                         if (p.defaultTag != null) obj.put("defaultTag", p.defaultTag);
                         if (p.sectionHeader != null) obj.put("sectionHeader", p.sectionHeader);
+                        if (p.choices != null && !p.choices.isEmpty()) {
+                            obj.put("choices", JSONArray.fromObject(p.choices));
+                        }
                         paramsArray.add(obj);
                     }
                     response.put("params", paramsArray);

@@ -6,6 +6,7 @@ package io.github.zeeshan.hotreloadparams.model;
 public enum ParamType {
     STRING("string"),
     BOOLEAN("boolean"),
+    PASSWORD("password"),
     IMAGE_TAG("imageTag"),
     ACTIVE_CHOICE("activeChoice"),
     CHOICE("choice"),

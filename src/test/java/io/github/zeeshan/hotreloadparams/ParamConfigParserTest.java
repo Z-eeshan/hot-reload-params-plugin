@@ -2,6 +2,7 @@ package io.github.zeeshan.hotreloadparams;
 
 import org.junit.Test;
 
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.Assert.*;
@@ -44,9 +45,68 @@ public class ParamConfigParserTest {
                 "    choice(name: 'ENV', choices: ['dev', 'staging', 'prod'], description: 'Environment')\n" +
                 "  }\n" +
                 "}";
+        List<ParamConfigParser.ParsedParam> params = parser.parseParams(pipeline);
+        assertEquals(1, params.size());
+        ParamConfigParser.ParsedParam p = params.get(0);
+        assertEquals("choice", p.type);
+        assertEquals("dev", p.defaultValue);
+        assertEquals(3, p.choices.size());
+        assertEquals("dev", p.choices.get(0));
+        assertEquals("staging", p.choices.get(1));
+        assertEquals("prod", p.choices.get(2));
+    }
+
+    @Test
+    public void testChoiceParamDoubleQuotedItems() throws Exception {
+        String pipeline = "pipeline {\n" +
+                "  parameters {\n" +
+                "    choice(name: 'LEVEL', choices: [\"INFO\", \"DEBUG\", \"WARN\"], description: 'log')\n" +
+                "  }\n" +
+                "}";
+        List<ParamConfigParser.ParsedParam> params = parser.parseParams(pipeline);
+        ParamConfigParser.ParsedParam p = params.get(0);
+        assertEquals("INFO", p.defaultValue);
+        assertEquals(3, p.choices.size());
+        assertEquals("WARN", p.choices.get(2));
+    }
+
+    @Test
+    public void testChoiceEmptyList() throws Exception {
+        String pipeline = "pipeline {\n" +
+                "  parameters {\n" +
+                "    choice(name: 'EMPTY', choices: [], description: 'empty')\n" +
+                "  }\n" +
+                "}";
+        List<ParamConfigParser.ParsedParam> params = parser.parseParams(pipeline);
+        ParamConfigParser.ParsedParam p = params.get(0);
+        assertEquals("", p.defaultValue);
+        assertTrue(p.choices.isEmpty());
+    }
+
+    @Test
+    public void testPasswordParam() throws Exception {
+        String pipeline = "pipeline {\n" +
+                "  parameters {\n" +
+                "    password(name: 'API_TOKEN', defaultValue: 'secret', description: 'Token')\n" +
+                "  }\n" +
+                "}";
+        List<ParamConfigParser.ParsedParam> params = parser.parseParams(pipeline);
+        assertEquals(1, params.size());
+        ParamConfigParser.ParsedParam p = params.get(0);
+        assertEquals("password", p.type);
+        assertEquals("API_TOKEN", p.name);
+        assertEquals("secret", p.defaultValue);
+    }
+
+    @Test
+    public void testPasswordParamEmptyDefault() throws Exception {
+        String pipeline = "pipeline {\n" +
+                "  parameters {\n" +
+                "    password(name: 'SECRET', description: 'Secret value')\n" +
+                "  }\n" +
+                "}";
         Map<String, String> defaults = parser.parseDefaults(pipeline);
-        assertEquals(1, defaults.size());
-        assertEquals("", defaults.get("ENV"));
+        assertEquals("", defaults.get("SECRET"));
     }
 
     @Test

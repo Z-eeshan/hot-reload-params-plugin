@@ -329,7 +329,12 @@
     // For imageTag with no explicit defaultTag, don't touch the dropdown
     if (!newValue && param.type === "imageTag") return;
     if (inputEl.tagName === "SELECT") {
-      setSelectValue(inputEl, newValue);
+      // For choice params, rebuild the options from the branch's choices list
+      if (param.type === "choice" && Array.isArray(param.choices)) {
+        rebuildSelectOptions(inputEl, param.choices, newValue);
+      } else {
+        setSelectValue(inputEl, newValue);
+      }
     } else if (inputEl.type === "checkbox") {
       inputEl.checked = newValue === "true";
     } else {
@@ -352,6 +357,24 @@
       opt.textContent = value;
       selectEl.appendChild(opt);
       selectEl.value = value;
+    }
+  }
+
+  function rebuildSelectOptions(selectEl, choices, selected) {
+    while (selectEl.firstChild) selectEl.removeChild(selectEl.firstChild);
+    for (var i = 0; i < choices.length; i++) {
+      var opt = document.createElement("option");
+      opt.value = choices[i];
+      opt.textContent = choices[i];
+      if (choices[i] === selected) opt.selected = true;
+      selectEl.appendChild(opt);
+    }
+    if (selected && choices.indexOf(selected) === -1) {
+      var extra = document.createElement("option");
+      extra.value = selected;
+      extra.textContent = selected;
+      extra.selected = true;
+      selectEl.appendChild(extra);
     }
   }
 
@@ -394,9 +417,16 @@
       valueInput.type = "checkbox";
       valueInput.name = "value";
       valueInput.checked = param.defaultValue === "true";
+    } else if (param.type === "choice" && Array.isArray(param.choices)) {
+      valueInput = document.createElement("select");
+      valueInput.name = "value";
+      valueInput.className = "jenkins-select__input";
+      valueInput.style.cssText =
+        "width: 100%; max-width: 500px; padding: 6px 8px; border: 1px solid #ccc; border-radius: 4px;";
+      rebuildSelectOptions(valueInput, param.choices, param.defaultValue || "");
     } else {
       valueInput = document.createElement("input");
-      valueInput.type = "text";
+      valueInput.type = param.type === "password" ? "password" : "text";
       valueInput.name = "value";
       valueInput.value = param.defaultValue || "";
       valueInput.className = "jenkins-input";

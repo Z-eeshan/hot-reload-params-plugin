@@ -1,6 +1,7 @@
 package io.github.zeeshan.hotreloadparams;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -26,6 +27,7 @@ public class ParamConfigParser {
     static {
         KNOWN_TYPES.add("string");
         KNOWN_TYPES.add("booleanParam");
+        KNOWN_TYPES.add("password");
         KNOWN_TYPES.add("choice");
         KNOWN_TYPES.add("imageTag");
         KNOWN_TYPES.add("activeChoice");
@@ -42,9 +44,11 @@ public class ParamConfigParser {
         public final String image;
         public final String defaultTag;
         public final String sectionHeader;
+        public final List<String> choices;
 
         public ParsedParam(String name, String type, String defaultValue, String description,
-                           String image, String defaultTag, String sectionHeader) {
+                           String image, String defaultTag, String sectionHeader,
+                           List<String> choices) {
             this.name = name;
             this.type = type;
             this.defaultValue = defaultValue != null ? defaultValue : "";
@@ -52,6 +56,7 @@ public class ParamConfigParser {
             this.image = image;
             this.defaultTag = defaultTag;
             this.sectionHeader = sectionHeader;
+            this.choices = choices != null ? choices : Collections.emptyList();
         }
     }
 
@@ -185,6 +190,7 @@ public class ParamConfigParser {
         String image = null;
         String defaultTag = null;
         String sectionHeader = null;
+        List<String> choices = null;
         String type;
 
         switch (funcName) {
@@ -196,6 +202,10 @@ public class ParamConfigParser {
                 type = "boolean";
                 defaultValue = args.getOrDefault("defaultValue", "false");
                 break;
+            case "password":
+                type = "password";
+                defaultValue = args.getOrDefault("defaultValue", "");
+                break;
             case "imageTag":
                 type = "imageTag";
                 image = args.getOrDefault("image", "");
@@ -204,7 +214,9 @@ public class ParamConfigParser {
                 break;
             case "choice":
                 type = "choice";
-                defaultValue = "";
+                choices = parseListLiteral(args.get("choices"));
+                // Jenkins convention: default is the first entry of the choices list
+                defaultValue = choices.isEmpty() ? "" : choices.get(0);
                 break;
             case "activeChoice":
                 type = "activeChoice";
@@ -219,7 +231,44 @@ public class ParamConfigParser {
                 return null;
         }
 
-        return new ParsedParam(name, type, defaultValue, description, image, defaultTag, sectionHeader);
+        return new ParsedParam(name, type, defaultValue, description, image, defaultTag, sectionHeader, choices);
+    }
+
+    /**
+     * Extracts quoted string items from a Groovy list literal like
+     * {@code ['a', 'b', "c"]}. Returns an empty list if the input is null,
+     * empty, or not a bracketed list.
+     */
+    private List<String> parseListLiteral(String literal) {
+        List<String> result = new ArrayList<>();
+        if (literal == null) return result;
+        String trimmed = literal.trim();
+        if (trimmed.isEmpty() || trimmed.charAt(0) != '[' || trimmed.charAt(trimmed.length() - 1) != ']') {
+            return result;
+        }
+        String inner = trimmed.substring(1, trimmed.length() - 1);
+        int i = 0;
+        int len = inner.length();
+        while (i < len) {
+            while (i < len && (Character.isWhitespace(inner.charAt(i)) || inner.charAt(i) == ',')) i++;
+            if (i >= len) break;
+            char c = inner.charAt(i);
+            if (c == '\'' || c == '"') {
+                char quote = c;
+                i++;
+                int start = i;
+                while (i < len && inner.charAt(i) != quote) i++;
+                result.add(inner.substring(start, i));
+                if (i < len) i++; // closing quote
+            } else {
+                // Unquoted token (number, identifier) — capture up to the next comma
+                int start = i;
+                while (i < len && inner.charAt(i) != ',') i++;
+                String token = inner.substring(start, i).trim();
+                if (!token.isEmpty()) result.add(token);
+            }
+        }
+        return result;
     }
 
     // ── Named argument extractor ───────────────────────────────────────────
@@ -266,9 +315,10 @@ public class ParamConfigParser {
                 value = body.substring(valStart, i);
                 if (i < len) i++; // skip closing quote
             } else if (first == '[' || first == '(') {
-                // Nested structure — skip entire balanced block
+                // Nested structure — capture the full balanced block (including brackets)
+                int valStart = i;
                 i = skipBalanced(body, i);
-                value = ""; // we don't need the content of complex structures
+                value = body.substring(valStart, i);
             } else {
                 // Bare value (true, false, number, identifier, method call...)
                 int valStart = i;
