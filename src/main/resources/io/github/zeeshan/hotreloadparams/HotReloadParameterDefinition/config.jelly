@@ -1,0 +1,34 @@
+<?jelly escape-by-default='true'?>
+<j:jelly xmlns:j="jelly:core" xmlns:f="/lib/form" xmlns:st="jelly:stapler">
+
+  <!--
+    config.jelly – Displayed in the job configuration page under "This project is parameterized"
+    when the user adds a "Hot Reload Parameters" parameter definition.
+  -->
+
+  <f:entry title="Git Repository URL" field="repoUrl">
+    <f:textbox default=""
+               description="URL of the Git repo containing the parameter definitions file"/>
+  </f:entry>
+
+  <f:entry title="Credentials ID" field="credentialsId">
+    <f:textbox default=""
+               description="Jenkins credentials ID for Git authentication (leave empty for anonymous)"/>
+  </f:entry>
+
+  <f:entry title="Parameter File Path" field="paramFilePath">
+    <f:textbox default="vars/release-pipeline.groovy"
+               description="Path to the Groovy file within the repo that contains a parameters {} block"/>
+  </f:entry>
+
+  <f:entry title="Trigger Parameter Name" field="triggerParamName">
+    <f:textbox default="RELEASE_BRANCH"
+               description="The parameter whose value changes trigger a reload of dynamic parameters"/>
+  </f:entry>
+
+  <f:entry title="Default Branch" field="defaultBranch">
+    <f:textbox default="master"
+               description="Git branch to use when the trigger value doesn't match any branch"/>
+  </f:entry>
+
+</j:jelly>

@@ -1,0 +1,7 @@
+<?jelly escape-by-default='true'?>
+<div>
+    Hot Reload Parameters plugin — reads parameter definitions from a Groovy DSL file
+    in a Git repo branch. When the trigger parameter (e.g. RELEASE_BRANCH) changes on the
+    "Build with Parameters" page, the plugin fetches the matching branch's config and
+    re-renders all dynamic parameters in-place via AJAX.
+</div>

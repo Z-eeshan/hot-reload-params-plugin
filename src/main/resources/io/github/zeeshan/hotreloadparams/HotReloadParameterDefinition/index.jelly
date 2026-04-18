@@ -1,0 +1,34 @@
+<?jelly escape-by-default='true'?>
+<j:jelly xmlns:j="jelly:core" xmlns:f="/lib/form" xmlns:st="jelly:stapler">
+
+  <!--
+    index.jelly – Rendered on the "Build with Parameters" page.
+    This plugin does NOT render its own parameter fields.
+    It only injects JavaScript that watches the trigger param (e.g. RELEASE_BRANCH)
+    and updates the default values of other (normal) parameters via AJAX.
+  -->
+
+  <div id="hot-reload-params-root"
+       data-repo-url="${it.repoUrl}"
+       data-credentials-id="${it.credentialsId}"
+       data-param-file-path="${it.paramFilePath}"
+       data-trigger-param-name="${it.triggerParamName}"
+       data-default-branch="${it.defaultBranch}"
+       data-descriptor-url="${descriptor.descriptorUrl}"
+       style="width: 100%;">
+
+    <!-- Status banner for feedback messages -->
+    <div id="drp-status-banner" style="display: none; padding: 8px 12px; margin: 8px 0; border-radius: 4px; font-size: 13px;">
+    </div>
+
+    <!-- Loading indicator -->
+    <div id="drp-loading" style="display: none; text-align: center; padding: 8px;">
+      <img src="${rootURL}/images/spinner.gif" alt="Loading..." style="width: 20px; height: 20px;"/>
+      <span style="margin-left: 8px; color: #666; font-size: 12px;">Updating parameter defaults...</span>
+    </div>
+  </div>
+
+  <!-- Include the JavaScript -->
+  <st:adjunct includes="io.github.zeeshan.hotreloadparams.HotReloadParameterDefinition.hot-reload-params"/>
+
+</j:jelly>

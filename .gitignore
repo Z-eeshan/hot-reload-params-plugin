@@ -1,0 +1,31 @@
+# Maven build output
+target/
+
+# IDE
+.idea/
+*.iml
+.project
+.classpath
+.settings/
+.vscode/
+*.swp
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Jenkins local test instance
+work/
+
+# Compiled classes
+*.class
+
+# Package files
+*.jar
+*.war
+*.hpi
+!/src/**
+
+# Logs
+*.log
