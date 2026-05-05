@@ -11,12 +11,12 @@
         <relativePath/>
     </parent>
 
-    <groupId>io.github.z-eeshan</groupId>
+    <groupId>io.jenkins.plugins</groupId>
     <artifactId>hot-reload-params</artifactId>
     <version>1.1.0</version>
     <packaging>hpi</packaging>
 
-    <name>Hot Reload Parameters Plugin</name>
+    <name>Hot Reload Parameters</name>
     <description>
         Dynamically reloads Jenkins parameter defaults from a Groovy DSL file
         in a Git branch when a trigger parameter changes on the Build with
