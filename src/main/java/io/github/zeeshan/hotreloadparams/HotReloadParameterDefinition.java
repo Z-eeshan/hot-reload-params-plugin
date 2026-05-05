@@ -1,10 +1,20 @@
 package io.github.zeeshan.hotreloadparams;
 
 import hudson.Extension;
+import hudson.model.BooleanParameterValue;
+import hudson.model.Cause;
+import hudson.model.CauseAction;
+import hudson.model.Item;
+import hudson.model.Job;
 import hudson.model.ParameterDefinition;
 import hudson.model.ParameterValue;
+import hudson.model.ParametersAction;
+import hudson.model.ParametersDefinitionProperty;
+import hudson.model.PasswordParameterValue;
 import hudson.model.StringParameterValue;
+import hudson.model.TextParameterValue;
 import jenkins.model.Jenkins;
+import jenkins.model.ParameterizedJobMixIn;
 import net.sf.json.JSONArray;
 import net.sf.json.JSONObject;
 import org.jenkinsci.Symbol;
@@ -13,9 +23,11 @@ import org.kohsuke.stapler.DataBoundSetter;
 import org.kohsuke.stapler.QueryParameter;
 import org.kohsuke.stapler.StaplerRequest;
 import org.kohsuke.stapler.StaplerResponse;
+import org.kohsuke.stapler.interceptor.RequirePOST;
 import org.kohsuke.stapler.verb.GET;
 
 import javax.servlet.ServletException;
+import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.*;
 import java.util.logging.Level;
@@ -209,6 +221,128 @@ public class HotReloadParameterDefinition extends ParameterDefinition {
             ConfigFetcher.clearCache();
             rsp.setContentType("application/json;charset=UTF-8");
             rsp.getWriter().write("{\"status\":\"ok\",\"message\":\"Cache cleared\"}");
+        }
+
+        /**
+         * Build-submission endpoint that bypasses {@link ParametersDefinitionProperty#_doBuild}.
+         * Required because the plugin lets the target branch add/remove parameters; Jenkins'
+         * built-in build action rejects any submitted parameter that isn't declared on the job.
+         * <p>
+         * This endpoint trusts the {@code drpType} hint the plugin's JS puts on every parameter
+         * row, constructs the matching {@link ParameterValue}, and schedules the build directly.
+         */
+        @RequirePOST
+        public void doTriggerBuild(StaplerRequest req, StaplerResponse rsp,
+                                   @QueryParameter("drpJobFullName") String jobFullName)
+                throws IOException, ServletException {
+
+            if (jobFullName == null || jobFullName.isEmpty()) {
+                jobFullName = req.getParameter("drpJobFullName");
+            }
+            if (jobFullName == null || jobFullName.isEmpty()) {
+                rsp.sendError(HttpServletResponse.SC_BAD_REQUEST, "drpJobFullName required");
+                return;
+            }
+
+            Jenkins jenkins = Jenkins.get();
+            Job<?, ?> job = jenkins.getItemByFullName(jobFullName, Job.class);
+            if (job == null) {
+                rsp.sendError(HttpServletResponse.SC_NOT_FOUND, "Job not found: " + jobFullName);
+                return;
+            }
+            job.checkPermission(Item.BUILD);
+
+            if (!(job instanceof ParameterizedJobMixIn.ParameterizedJob)) {
+                rsp.sendError(HttpServletResponse.SC_BAD_REQUEST, "Job is not parameterized: " + jobFullName);
+                return;
+            }
+
+            ParametersDefinitionProperty pdp = job.getProperty(ParametersDefinitionProperty.class);
+
+            JSONObject formData = req.getSubmittedForm();
+            List<JSONObject> entries = extractParameterEntries(formData);
+
+            List<ParameterValue> values = new ArrayList<>();
+            Set<String> seen = new LinkedHashSet<>();
+            for (JSONObject jo : entries) {
+                String name = jo.optString("name", null);
+                if (name == null || name.isEmpty()) continue;
+                if ("HOT_RELOAD_PARAMS".equals(name)) continue;
+                if (!seen.add(name)) continue;
+
+                String drpType = jo.optString("drpType", null);
+                ParameterValue pv = null;
+
+                if (drpType == null || drpType.isEmpty()) {
+                    // No type hint — trust the job's definition if present.
+                    ParameterDefinition def = pdp != null ? pdp.getParameterDefinition(name) : null;
+                    if (def != null) {
+                        try {
+                            pv = def.createValue(req, jo);
+                        } catch (RuntimeException e) {
+                            LOGGER.log(Level.FINE,
+                                    "Falling back to string value for " + name + ": " + e.getMessage());
+                        }
+                    }
+                }
+                if (pv == null) {
+                    pv = createFallbackValue(name, drpType, jo);
+                }
+                if (pv != null) values.add(pv);
+            }
+
+            LOGGER.log(Level.INFO, "Scheduling build of {0} with {1} parameters",
+                    new Object[]{jobFullName, values.size()});
+
+            ParameterizedJobMixIn.ParameterizedJob<?, ?> pjob =
+                    (ParameterizedJobMixIn.ParameterizedJob<?, ?>) job;
+            pjob.scheduleBuild2(pjob.getQuietPeriod(),
+                    new CauseAction(new Cause.UserIdCause()),
+                    new ParametersAction(values));
+
+            rsp.sendRedirect2(req.getContextPath() + "/" + job.getUrl());
+        }
+
+        /**
+         * Flatten the submitted form's {@code parameter} slot into a list of JSON objects.
+         * Jenkins' form serializer emits either a JSONArray (2+ parameters) or a lone
+         * JSONObject (exactly one parameter), so handle both.
+         */
+        private static List<JSONObject> extractParameterEntries(JSONObject formData) {
+            List<JSONObject> out = new ArrayList<>();
+            Object raw = formData.opt("parameter");
+            if (raw instanceof JSONArray) {
+                JSONArray arr = (JSONArray) raw;
+                for (int i = 0; i < arr.size(); i++) {
+                    Object e = arr.get(i);
+                    if (e instanceof JSONObject) out.add((JSONObject) e);
+                }
+            } else if (raw instanceof JSONObject) {
+                out.add((JSONObject) raw);
+            }
+            return out;
+        }
+
+        private static ParameterValue createFallbackValue(String name, String drpType, JSONObject jo) {
+            String value = jo.optString("value", "");
+            String type = drpType != null ? drpType : "string";
+            switch (type) {
+                case "boolean":
+                    boolean b = "true".equalsIgnoreCase(value) || "on".equalsIgnoreCase(value);
+                    if (jo.has("value") && jo.get("value") instanceof Boolean) {
+                        b = jo.getBoolean("value");
+                    }
+                    return new BooleanParameterValue(name, b);
+                case "password":
+                    return new PasswordParameterValue(name, value);
+                case "text":
+                    return new TextParameterValue(name, value);
+                case "choice":
+                case "string":
+                case "imageTag":
+                default:
+                    return new StringParameterValue(name, value);
+            }
         }
     }
 }

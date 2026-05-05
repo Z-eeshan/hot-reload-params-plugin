@@ -5,9 +5,12 @@
  * When the trigger parameter (e.g. RELEASE_BRANCH) changes, the plugin:
  *   1. Fetches the pipeline file from the matching Git branch
  *   2. Parses all parameter definitions from that branch
- *   3. Hides parameters that don't exist on the target branch
+ *   3. Hides (and disables) parameters that don't exist on the target branch
  *   4. Shows / creates parameters that do exist on the target branch
- *   5. Updates default values for matching parameters
+ *   5. Reorders rows so DOM order matches the branch's parameter order
+ *   6. Redirects the "Build" form to the plugin's submission endpoint so
+ *      the build can succeed even when the branch introduces parameters the
+ *      job's stored ParametersDefinitionProperty doesn't know about.
  */
 (function () {
   "use strict";
@@ -18,6 +21,9 @@
   var DEBOUNCE_MS = 800;
   // Track dynamically-created rows so we can clean them up on re-fetch
   var dynamicRows = [];
+
+  var TRIGGER_BUILD_URL_SUFFIX =
+    "/descriptorByName/io.github.zeeshan.hotreloadparams.HotReloadParameterDefinition/triggerBuild";
 
   // ── Initialization ───────────────────────────────────────────────────────
 
@@ -42,6 +48,7 @@
 
     attachTriggerListener();
     repositionBanner();
+    hijackBuildForm();
 
     // Initial load
     var triggerInput = findParamValueInput(config.triggerParamName);
@@ -71,11 +78,7 @@
     var nameInputs = document.querySelectorAll('input[name="name"]');
     for (var i = 0; i < nameInputs.length; i++) {
       if (nameInputs[i].value === paramName) {
-        var container =
-          nameInputs[i].closest(".jenkins-form-item") ||
-          nameInputs[i].closest('[name="parameter"]') ||
-          nameInputs[i].closest("tr") ||
-          nameInputs[i].parentElement;
+        var container = closestParamContainer(nameInputs[i]);
         if (container) {
           var valueEl =
             container.querySelector('input[name="value"]') ||
@@ -106,6 +109,21 @@
     return null;
   }
 
+  /**
+   * Return the outer container that wraps BOTH the label/description AND the
+   * <div name="parameter"> inner block. In modern Jenkins this is
+   * <div class="jenkins-form-item">. Using `[name="parameter"]` (the inner
+   * block) would strand the label when we move the row.
+   */
+  function closestParamContainer(el) {
+    return (
+      el.closest(".jenkins-form-item") ||
+      el.closest('[name="parameter"]') ||
+      el.closest("tr") ||
+      el.parentElement
+    );
+  }
+
   function findParamValueInput(paramName) {
     var row = findParamRow(paramName);
     return row ? row.valueInput : null;
@@ -119,16 +137,29 @@
     var nameInputs = document.querySelectorAll('input[name="name"]');
     for (var i = 0; i < nameInputs.length; i++) {
       var name = nameInputs[i].value;
-      var container =
-        nameInputs[i].closest(".jenkins-form-item") ||
-        nameInputs[i].closest('[name="parameter"]') ||
-        nameInputs[i].closest("tr") ||
-        nameInputs[i].parentElement;
+      var container = closestParamContainer(nameInputs[i]);
       if (container) {
         map[name] = container;
       }
     }
     return map;
+  }
+
+  /**
+   * The plugin's own marker row — the one containing
+   * <input name="name" value="HOT_RELOAD_PARAMS">.
+   * Used as the insertion anchor for dynamic rows so they land in the
+   * correct position regardless of how Jenkins wraps the params list.
+   */
+  function findPluginRow() {
+    var nameInputs = document.querySelectorAll('input[name="name"]');
+    for (var i = 0; i < nameInputs.length; i++) {
+      if (nameInputs[i].value === "HOT_RELOAD_PARAMS") {
+        return closestParamContainer(nameInputs[i]);
+      }
+    }
+    // Last-resort fallback: the root element's nearest row
+    return root ? closestParamContainer(root) : null;
   }
 
   // ── Trigger Listener ─────────────────────────────────────────────────────
@@ -237,7 +268,7 @@
       });
   }
 
-  // ── Core: Apply Parameters (hide/show/create/update) ─────────────────────
+  // ── Core: Apply Parameters (hide/show/create/update/reorder) ─────────────
 
   function applyParams(paramDefs) {
     // Build a set of param names from the target branch (skip separators for hiding logic)
@@ -257,60 +288,96 @@
     }
     dynamicRows = [];
 
-    // 2. Hide existing params NOT in the target branch (except trigger + plugin itself)
+    // 2. Hide (and disable inputs of) existing params NOT in the target branch
+    //    (except trigger + plugin itself). Disabling is essential so they don't
+    //    submit as form values when the user clicks Build.
     var hiddenCount = 0;
     for (var existingName in pageRows) {
       if (!pageRows.hasOwnProperty(existingName)) continue;
       if (existingName === config.triggerParamName) continue;
-      // Don't hide separators, booleans etc that we control
+      if (existingName === "HOT_RELOAD_PARAMS") continue;
       if (branchParamNames[existingName]) {
-        // Show it (might have been hidden before)
         pageRows[existingName].style.display = "";
         pageRows[existingName].removeAttribute("data-drp-hidden");
+        setInputsDisabled(pageRows[existingName], false);
       } else {
-        // Hide it
         pageRows[existingName].style.display = "none";
         pageRows[existingName].setAttribute("data-drp-hidden", "true");
+        setInputsDisabled(pageRows[existingName], true);
         hiddenCount++;
       }
     }
 
-    // 3. Find the insertion anchor — we insert new dynamic rows before the plugin's own root
-    var insertionAnchor =
-      root.closest(".jenkins-form-item") ||
-      root.closest('[name="parameter"]') ||
-      root.closest("tr") ||
-      root.parentElement;
+    // 3. Insertion anchor: the trigger row. Branch params should flow directly
+    //    after the trigger (e.g. RELEASE_BRANCH), regardless of where the user
+    //    placed the HOT_RELOAD_PARAMS marker in the job's parameter list.
+    var triggerRowInfo = findParamRow(config.triggerParamName);
+    var triggerContainer = triggerRowInfo ? triggerRowInfo.container : null;
+    var pluginRow = findPluginRow();
+    var insertionParent =
+      (triggerContainer && triggerContainer.parentNode) ||
+      (pluginRow && pluginRow.parentNode) ||
+      null;
 
-    // 4. Iterate params from branch: update existing or create new
+    // 4. Iterate params from branch in order: update existing or create new
     var updatedCount = 0;
     var createdCount = 0;
+    var orderedRows = [];
 
     for (var j = 0; j < paramDefs.length; j++) {
       var param = paramDefs[j];
       if (!param.name) continue;
-      if (param.name === config.triggerParamName) continue;
+      if (param.name === config.triggerParamName) {
+        // Keep the trigger row in its natural spot; don't move it.
+        continue;
+      }
 
       var existingRow = findParamRow(param.name);
 
       if (existingRow) {
-        // Parameter exists on the page — update its value
         existingRow.container.style.display = "";
         existingRow.container.removeAttribute("data-drp-hidden");
+        setInputsDisabled(existingRow.container, false);
         if (existingRow.valueInput) {
           updateFieldValue(existingRow.valueInput, param);
         }
+        setDrpType(existingRow.container, param.type);
+        orderedRows.push(existingRow.container);
         updatedCount++;
       } else if (param.type !== "separator") {
-        // Parameter doesn't exist on the page — create a new form entry
         var newRow = createParamRow(param);
-        if (newRow && insertionAnchor && insertionAnchor.parentNode) {
-          insertionAnchor.parentNode.insertBefore(newRow, insertionAnchor);
+        if (newRow && insertionParent) {
+          // Temporarily attach; step 5 places it in the correct position.
+          insertionParent.appendChild(newRow);
           dynamicRows.push(newRow);
+          orderedRows.push(newRow);
           createdCount++;
         }
       }
     }
+
+    // 5. Reorder: place each branch param directly after the trigger row,
+    //    preserving branch order. Fallback to inserting before the plugin row
+    //    if the trigger can't be located for some reason.
+    if (triggerContainer && triggerContainer.parentNode) {
+      var lastPlaced = triggerContainer;
+      for (var r = 0; r < orderedRows.length; r++) {
+        lastPlaced.parentNode.insertBefore(
+          orderedRows[r],
+          lastPlaced.nextSibling,
+        );
+        lastPlaced = orderedRows[r];
+      }
+    } else if (pluginRow && pluginRow.parentNode) {
+      for (var r2 = 0; r2 < orderedRows.length; r2++) {
+        pluginRow.parentNode.insertBefore(orderedRows[r2], pluginRow);
+      }
+    }
+
+    // 6. Re-anchor the banner/loading right after the trigger row. Step 5
+    //    inserts param rows between the trigger and whatever currently sits
+    //    after it, which shoves the banner to the bottom of the params list.
+    repositionBanner();
 
     console.info(
       "[DRP] Updated: " +
@@ -378,6 +445,34 @@
     }
   }
 
+  /**
+   * Ensure the container has a hidden <input name="drpType"> carrying the
+   * branch's declared type. The server uses this to construct the right
+   * ParameterValue subclass at build time, independent of whatever definition
+   * the job's stored config has (or doesn't have).
+   */
+  function setDrpType(container, type) {
+    if (!container || !type) return;
+    var existing = container.querySelector('input[name="drpType"]');
+    if (existing) {
+      existing.value = type;
+      return;
+    }
+    var hidden = document.createElement("input");
+    hidden.type = "hidden";
+    hidden.name = "drpType";
+    hidden.value = type;
+    container.appendChild(hidden);
+  }
+
+  function setInputsDisabled(container, disabled) {
+    if (!container) return;
+    var inputs = container.querySelectorAll("input, select, textarea");
+    for (var i = 0; i < inputs.length; i++) {
+      inputs[i].disabled = !!disabled;
+    }
+  }
+
   // ── Create new parameter DOM entries ─────────────────────────────────────
 
   function createParamRow(param) {
@@ -394,6 +489,14 @@
     nameInput.name = "name";
     nameInput.value = param.name;
     wrapper.appendChild(nameInput);
+
+    // Hidden drpType input — tells the plugin's server-side endpoint how to
+    // coerce the value.
+    var typeInput = document.createElement("input");
+    typeInput.type = "hidden";
+    typeInput.name = "drpType";
+    typeInput.value = param.type || "string";
+    wrapper.appendChild(typeInput);
 
     // Label
     var label = document.createElement("div");
@@ -424,6 +527,14 @@
       valueInput.style.cssText =
         "width: 100%; max-width: 500px; padding: 6px 8px; border: 1px solid #ccc; border-radius: 4px;";
       rebuildSelectOptions(valueInput, param.choices, param.defaultValue || "");
+    } else if (param.type === "text") {
+      valueInput = document.createElement("textarea");
+      valueInput.name = "value";
+      valueInput.value = param.defaultValue || "";
+      valueInput.className = "jenkins-input";
+      valueInput.rows = 4;
+      valueInput.style.cssText =
+        "width: 100%; max-width: 500px; padding: 6px 8px; border: 1px solid #ccc; border-radius: 4px;";
     } else {
       valueInput = document.createElement("input");
       valueInput.type = param.type === "password" ? "password" : "text";
@@ -444,6 +555,71 @@
     wrapper.appendChild(badge);
 
     return wrapper;
+  }
+
+  // ── Build-form hijack ────────────────────────────────────────────────────
+
+  /**
+   * Redirect the "Build" form to the plugin's own submission endpoint and add
+   * a hidden drpJobFullName input so the server knows which job to schedule.
+   *
+   * Without this, Jenkins' native _doBuild rejects any parameter not declared
+   * on the job, so a branch that introduces new parameters would always fail.
+   */
+  function hijackBuildForm() {
+    var pluginRow = findPluginRow();
+    var form = pluginRow ? pluginRow.closest("form") : null;
+    if (!form) {
+      // Fall back to the first form on the page that posts to a /build endpoint
+      var forms = document.querySelectorAll("form");
+      for (var i = 0; i < forms.length; i++) {
+        var action = forms[i].getAttribute("action") || "";
+        if (/\/build(WithParameters)?(\/|$|\?)/.test(action)) {
+          form = forms[i];
+          break;
+        }
+      }
+    }
+    if (!form) {
+      console.warn("[DRP] Could not locate build form to hijack");
+      return;
+    }
+
+    form.setAttribute("action", getRootUrl() + TRIGGER_BUILD_URL_SUFFIX);
+    form.setAttribute("method", "post");
+
+    var jobFullName = getJobFullName();
+    var existing = form.querySelector('input[name="drpJobFullName"]');
+    if (existing) {
+      existing.value = jobFullName;
+    } else {
+      var hidden = document.createElement("input");
+      hidden.type = "hidden";
+      hidden.name = "drpJobFullName";
+      hidden.value = jobFullName;
+      form.appendChild(hidden);
+    }
+  }
+
+  /**
+   * Derive the job's full name from the current URL.
+   * Jenkins URLs look like /job/A/job/B/job/C/build → full name "A/B/C".
+   */
+  function getJobFullName() {
+    var path = window.location.pathname || "";
+    var rootMeta = document.head.querySelector('meta[name="rootURL"]');
+    var prefix = rootMeta ? rootMeta.content : "";
+    if (prefix && path.indexOf(prefix) === 0) {
+      path = path.substring(prefix.length);
+    }
+    path = path.replace(
+      /\/(build|buildWithParameters|rebuild|parambuild)(\/?.*)?$/,
+      "",
+    );
+    var segments = path.split("/job/").filter(function (p) {
+      return p && p !== "/";
+    });
+    return segments.join("/").replace(/^\/+|\/+$/g, "");
   }
 
   // ── UI Helpers ────────────────────────────────────────────────────────────
