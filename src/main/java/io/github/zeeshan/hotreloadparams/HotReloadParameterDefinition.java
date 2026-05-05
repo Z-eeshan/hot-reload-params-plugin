@@ -21,13 +21,13 @@ import org.jenkinsci.Symbol;
 import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.DataBoundSetter;
 import org.kohsuke.stapler.QueryParameter;
-import org.kohsuke.stapler.StaplerRequest;
-import org.kohsuke.stapler.StaplerResponse;
+import org.kohsuke.stapler.StaplerRequest2;
+import org.kohsuke.stapler.StaplerResponse2;
 import org.kohsuke.stapler.interceptor.RequirePOST;
 import org.kohsuke.stapler.verb.GET;
 
-import javax.servlet.ServletException;
-import javax.servlet.http.HttpServletResponse;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.*;
 import java.util.logging.Level;
@@ -108,13 +108,13 @@ public class HotReloadParameterDefinition extends ParameterDefinition {
     // All real parameters are native Jenkins params and handled by Jenkins core.
 
     @Override
-    public ParameterValue createValue(StaplerRequest req, JSONObject jo) {
+    public ParameterValue createValue(StaplerRequest2 req, JSONObject jo) {
         // Return a simple marker value so Jenkins doesn't complain about null.
         return new StringParameterValue(getName(), jo.optString("value", ""));
     }
 
     @Override
-    public ParameterValue createValue(StaplerRequest req) {
+    public ParameterValue createValue(StaplerRequest2 req) {
         return new StringParameterValue(getName(), "");
     }
 
@@ -136,7 +136,7 @@ public class HotReloadParameterDefinition extends ParameterDefinition {
          * Returns JSON with {@code params} as a simple array of {@code {name, defaultValue}} objects.
          */
         @GET
-        public void doFetchParams(StaplerRequest req, StaplerResponse rsp,
+        public void doFetchParams(StaplerRequest2 req, StaplerResponse2 rsp,
                                   @QueryParameter String triggerValue,
                                   @QueryParameter String repoUrl,
                                   @QueryParameter String credentialsId,
@@ -213,7 +213,7 @@ public class HotReloadParameterDefinition extends ParameterDefinition {
          * AJAX endpoint: Force-clear the config cache.
          */
         @GET
-        public void doClearCache(StaplerRequest req, StaplerResponse rsp) throws IOException {
+        public void doClearCache(StaplerRequest2 req, StaplerResponse2 rsp) throws IOException {
             Jenkins jenkins = Jenkins.getInstanceOrNull();
             if (jenkins != null) {
                 jenkins.checkPermission(Jenkins.ADMINISTER);
@@ -232,7 +232,7 @@ public class HotReloadParameterDefinition extends ParameterDefinition {
          * row, constructs the matching {@link ParameterValue}, and schedules the build directly.
          */
         @RequirePOST
-        public void doTriggerBuild(StaplerRequest req, StaplerResponse rsp,
+        public void doTriggerBuild(StaplerRequest2 req, StaplerResponse2 rsp,
                                    @QueryParameter("drpJobFullName") String jobFullName)
                 throws IOException, ServletException {
 
