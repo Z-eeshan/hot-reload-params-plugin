@@ -1,21 +1,21 @@
 package io.github.zeeshan.hotreloadparams;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/**
- * Unit tests for {@link ParamConfigParser}.
- */
-public class ParamConfigParserTest {
+class ParamConfigParserTest {
 
     private final ParamConfigParser parser = new ParamConfigParser();
 
     @Test
-    public void testStringParam() throws Exception {
+    void stringParam() throws Exception {
         String pipeline = "pipeline {\n" +
                 "  parameters {\n" +
                 "    string(name: 'MY_PARAM', defaultValue: 'hello', description: 'A test param')\n" +
@@ -27,7 +27,7 @@ public class ParamConfigParserTest {
     }
 
     @Test
-    public void testBooleanParam() throws Exception {
+    void booleanParam() throws Exception {
         String pipeline = "pipeline {\n" +
                 "  parameters {\n" +
                 "    booleanParam(name: 'ENABLE_IT', defaultValue: false, description: 'toggle')\n" +
@@ -39,7 +39,7 @@ public class ParamConfigParserTest {
     }
 
     @Test
-    public void testChoiceParam() throws Exception {
+    void choiceParam() throws Exception {
         String pipeline = "pipeline {\n" +
                 "  parameters {\n" +
                 "    choice(name: 'ENV', choices: ['dev', 'staging', 'prod'], description: 'Environment')\n" +
@@ -57,7 +57,7 @@ public class ParamConfigParserTest {
     }
 
     @Test
-    public void testChoiceParamDoubleQuotedItems() throws Exception {
+    void choiceParamDoubleQuotedItems() throws Exception {
         String pipeline = "pipeline {\n" +
                 "  parameters {\n" +
                 "    choice(name: 'LEVEL', choices: [\"INFO\", \"DEBUG\", \"WARN\"], description: 'log')\n" +
@@ -71,7 +71,7 @@ public class ParamConfigParserTest {
     }
 
     @Test
-    public void testChoiceEmptyList() throws Exception {
+    void choiceEmptyList() throws Exception {
         String pipeline = "pipeline {\n" +
                 "  parameters {\n" +
                 "    choice(name: 'EMPTY', choices: [], description: 'empty')\n" +
@@ -84,7 +84,7 @@ public class ParamConfigParserTest {
     }
 
     @Test
-    public void testPasswordParam() throws Exception {
+    void passwordParam() throws Exception {
         String pipeline = "pipeline {\n" +
                 "  parameters {\n" +
                 "    password(name: 'API_TOKEN', defaultValue: 'secret', description: 'Token')\n" +
@@ -99,7 +99,7 @@ public class ParamConfigParserTest {
     }
 
     @Test
-    public void testPasswordParamEmptyDefault() throws Exception {
+    void passwordParamEmptyDefault() throws Exception {
         String pipeline = "pipeline {\n" +
                 "  parameters {\n" +
                 "    password(name: 'SECRET', description: 'Secret value')\n" +
@@ -110,7 +110,7 @@ public class ParamConfigParserTest {
     }
 
     @Test
-    public void testMixedParams() throws Exception {
+    void mixedParams() throws Exception {
         String pipeline = "pipeline {\n" +
                 "  parameters {\n" +
                 "    string(name: 'BRANCH', defaultValue: 'master', description: 'Branch')\n" +
@@ -126,7 +126,7 @@ public class ParamConfigParserTest {
     }
 
     @Test
-    public void testSkipsHotReloadParams() throws Exception {
+    void skipsHotReloadParams() throws Exception {
         String pipeline = "pipeline {\n" +
                 "  parameters {\n" +
                 "    string(name: 'BRANCH', defaultValue: 'master', description: 'Branch')\n" +
@@ -139,7 +139,7 @@ public class ParamConfigParserTest {
     }
 
     @Test
-    public void testDoubleQuotes() throws Exception {
+    void doubleQuotes() throws Exception {
         String pipeline = "pipeline {\n" +
                 "  parameters {\n" +
                 "    string(name: \"MY_PARAM\", defaultValue: \"world\", description: \"desc\")\n" +
@@ -149,23 +149,24 @@ public class ParamConfigParserTest {
         assertEquals("world", defaults.get("MY_PARAM"));
     }
 
-    @Test(expected = ParamConfigParser.ParamConfigParseException.class)
-    public void testEmptyContent() throws Exception {
-        parser.parseDefaults("");
-    }
-
-    @Test(expected = ParamConfigParser.ParamConfigParseException.class)
-    public void testNullContent() throws Exception {
-        parser.parseDefaults(null);
-    }
-
-    @Test(expected = ParamConfigParser.ParamConfigParseException.class)
-    public void testNoParametersBlock() throws Exception {
-        parser.parseDefaults("pipeline {\n  stages {\n  }\n}");
+    @Test
+    void emptyContent() {
+        assertThrows(ParamConfigParser.ParamConfigParseException.class, () -> parser.parseDefaults(""));
     }
 
     @Test
-    public void testEmptyDefaultValue() throws Exception {
+    void nullContent() {
+        assertThrows(ParamConfigParser.ParamConfigParseException.class, () -> parser.parseDefaults(null));
+    }
+
+    @Test
+    void noParametersBlock() {
+        assertThrows(ParamConfigParser.ParamConfigParseException.class,
+                () -> parser.parseDefaults("pipeline {\n  stages {\n  }\n}"));
+    }
+
+    @Test
+    void emptyDefaultValue() throws Exception {
         String pipeline = "pipeline {\n" +
                 "  parameters {\n" +
                 "    string(name: 'EMPTY', defaultValue: '', description: 'empty')\n" +
@@ -176,7 +177,7 @@ public class ParamConfigParserTest {
     }
 
     @Test
-    public void testCommentedOutParamsSkipped() throws Exception {
+    void commentedOutParamsSkipped() throws Exception {
         String pipeline = "pipeline {\n" +
                 "  parameters {\n" +
                 "    string(name: 'ACTIVE', defaultValue: 'yes', description: 'active')\n" +
@@ -192,7 +193,7 @@ public class ParamConfigParserTest {
     }
 
     @Test
-    public void testBlockCommentedParamsSkipped() throws Exception {
+    void blockCommentedParamsSkipped() throws Exception {
         String pipeline = "pipeline {\n" +
                 "  parameters {\n" +
                 "    string(name: 'KEEP', defaultValue: 'val', description: 'keep')\n" +
@@ -208,7 +209,7 @@ public class ParamConfigParserTest {
     }
 
     @Test
-    public void testImageTagParam() throws Exception {
+    void imageTagParam() throws Exception {
         String pipeline = "pipeline {\n" +
                 "  parameters {\n" +
                 "    imageTag(name: 'REDIS', description: '', image: 'redis', filter: '.*', defaultTag: '8.0', registry: 'https://registry.example.com', credentialId: '', tagOrder: 'NATURAL')\n" +
@@ -220,7 +221,7 @@ public class ParamConfigParserTest {
     }
 
     @Test
-    public void testImageTagEmptyDefaultTag() throws Exception {
+    void imageTagEmptyDefaultTag() throws Exception {
         String pipeline = "pipeline {\n" +
                 "  parameters {\n" +
                 "    imageTag(name: 'CORE', description: '', image: 'core', filter: '.*', defaultTag: '', registry: 'https://registry.example.com', credentialId: '', tagOrder: 'NATURAL')\n" +
@@ -228,5 +229,19 @@ public class ParamConfigParserTest {
                 "}";
         Map<String, String> defaults = parser.parseDefaults(pipeline);
         assertEquals("", defaults.get("CORE"));
+    }
+
+    @Test
+    void snippetizerStyleBooleanParam() throws Exception {
+        String pipeline = "pipeline {\n" +
+                "  parameters {\n" +
+                "    booleanParam defaultValue: true, description: 'my test', name: 'test'\n" +
+                "    string defaultValue: 'test', description: 'my string', name: 'str'\n" +
+                "  }\n" +
+                "}";
+        Map<String, String> defaults = parser.parseDefaults(pipeline);
+        assertEquals(2, defaults.size());
+        assertEquals("true", defaults.get("test"));
+        assertEquals("test", defaults.get("str"));
     }
 }

@@ -1,5 +1,5 @@
 <?jelly escape-by-default='true'?>
-<j:jelly xmlns:j="jelly:core" xmlns:f="/lib/form" xmlns:st="jelly:stapler">
+<j:jelly xmlns:j="jelly:core" xmlns:f="/lib/form" xmlns:l="/lib/layout" xmlns:st="jelly:stapler">
 
   <!--
     index.jelly – Rendered on the "Build with Parameters" page.
@@ -15,20 +15,15 @@
        data-trigger-param-name="${it.triggerParamName}"
        data-default-branch="${it.defaultBranch}"
        data-descriptor-url="${descriptor.descriptorUrl}"
-       style="width: 100%;">
+       data-job-full-name="${it.currentJobFullName}">
 
-    <!-- Status banner for feedback messages -->
-    <div id="drp-status-banner" style="display: none; padding: 8px 12px; margin: 8px 0; border-radius: 4px; font-size: 13px;">
-    </div>
+    <div id="drp-status-banner" class="jenkins-alert jenkins-hidden"/>
 
-    <!-- Loading indicator -->
-    <div id="drp-loading" style="display: none; text-align: center; padding: 8px;">
-      <img src="${rootURL}/images/spinner.gif" alt="Loading..." style="width: 20px; height: 20px;"/>
-      <span style="margin-left: 8px; color: #666; font-size: 12px;">Updating parameter defaults...</span>
+    <div id="drp-loading" class="jenkins-hidden">
+      <l:spinner text="${%Updating parameter defaults...}"/>
     </div>
   </div>
 
-  <!-- Include the JavaScript -->
   <st:adjunct includes="io.github.zeeshan.hotreloadparams.HotReloadParameterDefinition.hot-reload-params"/>
 
 </j:jelly>

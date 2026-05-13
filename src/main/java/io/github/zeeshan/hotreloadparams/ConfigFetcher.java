@@ -3,6 +3,8 @@ package io.github.zeeshan.hotreloadparams;
 import com.cloudbees.plugins.credentials.CredentialsMatchers;
 import com.cloudbees.plugins.credentials.CredentialsProvider;
 import com.cloudbees.plugins.credentials.common.StandardUsernamePasswordCredentials;
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import hudson.security.ACL;
 import jenkins.model.Jenkins;
 import org.eclipse.jgit.api.Git;
@@ -14,7 +16,6 @@ import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.revwalk.RevCommit;
 import org.eclipse.jgit.revwalk.RevTree;
 import org.eclipse.jgit.revwalk.RevWalk;
-import org.eclipse.jgit.storage.file.FileRepositoryBuilder;
 import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider;
 import org.eclipse.jgit.treewalk.TreeWalk;
 import org.eclipse.jgit.treewalk.filter.PathFilter;
@@ -24,10 +25,8 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Collection;
+import java.time.Duration;
 import java.util.Collections;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -35,14 +34,16 @@ import java.util.logging.Logger;
  * Fetches a Groovy parameter definitions file from a Git repository branch.
  * <p>
  * Uses JGit to clone (shallow, bare) or fetch the repo, then reads the specific file
- * from the requested branch. Includes in-memory caching with TTL.
+ * from the requested branch. Caches results using Caffeine.
  */
 public class ConfigFetcher {
     private static final Logger LOGGER = Logger.getLogger(ConfigFetcher.class.getName());
-    private static final long CACHE_TTL_MS = 60_000; // 60 seconds
 
-    // Cache: key = "repoUrl|branch|filePath", value = CacheEntry
-    private static final Map<String, CacheEntry> CACHE = new ConcurrentHashMap<>();
+    // Cache: key = "repoUrl|branch|filePath", value = file content
+    private static final Cache<String, String> CACHE = Caffeine.newBuilder()
+            .expireAfterWrite(Duration.ofSeconds(60))
+            .maximumSize(1000)
+            .build();
 
     private final String repoUrl;
     private final String credentialsId;
@@ -68,20 +69,20 @@ public class ConfigFetcher {
      * @return the file content, or null if completely unavailable
      */
     public FetchResult fetch(String triggerValue) {
-        LOGGER.log(Level.INFO, "fetch() triggerValue={0}, defaultBranch={1}, paramFilePath={2}",
+        LOGGER.log(Level.FINE, "fetch() triggerValue={0}, defaultBranch={1}, paramFilePath={2}",
                 new Object[]{triggerValue, defaultBranch, paramFilePath});
 
         // Try exact branch match first
         String content = fetchFromBranch(triggerValue);
         if (content != null) {
-            LOGGER.log(Level.INFO, "Matched exact branch: {0}", triggerValue);
+            LOGGER.log(Level.FINE, "Matched exact branch: {0}", triggerValue);
             return new FetchResult(content, triggerValue, false);
         }
 
         // Try extracted version as branch
         if (triggerValue != null && triggerValue.contains("/")) {
             String extracted = triggerValue.substring(triggerValue.lastIndexOf('/') + 1);
-            LOGGER.log(Level.INFO, "Trying extracted branch name: {0}", extracted);
+            LOGGER.log(Level.FINE, "Trying extracted branch name: {0}", extracted);
             content = fetchFromBranch(extracted);
             if (content != null) {
                 return new FetchResult(content, extracted, false);
@@ -89,7 +90,7 @@ public class ConfigFetcher {
         }
 
         // Fallback to default branch
-        LOGGER.log(Level.INFO, "Falling back to defaultBranch: {0}", defaultBranch);
+        LOGGER.log(Level.FINE, "Falling back to defaultBranch: {0}", defaultBranch);
         content = fetchFromBranch(defaultBranch);
         if (content != null) {
             return new FetchResult(content, defaultBranch, true);
@@ -109,16 +110,16 @@ public class ConfigFetcher {
         }
 
         String cacheKey = repoUrl + "|" + branch + "|" + paramFilePath;
-        CacheEntry cached = CACHE.get(cacheKey);
-        if (cached != null && !cached.isExpired()) {
+        String cached = CACHE.getIfPresent(cacheKey);
+        if (cached != null) {
             LOGGER.log(Level.FINE, "Cache hit for {0}", cacheKey);
-            return cached.content;
+            return cached;
         }
 
         try {
             String content = doFetch(branch);
             if (content != null) {
-                CACHE.put(cacheKey, new CacheEntry(content));
+                CACHE.put(cacheKey, content);
             }
             return content;
         } catch (Exception e) {
@@ -244,14 +245,9 @@ public class ConfigFetcher {
      * Clears the fetch cache (useful for testing or manual refresh).
      */
     public static void clearCache() {
-        CACHE.clear();
+        CACHE.invalidateAll();
     }
 
-    // ── Inner classes ──────────────────────────────────────────────────────
-
-    /**
-     * Result of a config fetch operation.
-     */
     public static class FetchResult {
         public final String content;
         public final String resolvedBranch;
@@ -261,23 +257,6 @@ public class ConfigFetcher {
             this.content = content;
             this.resolvedBranch = resolvedBranch;
             this.isFallback = isFallback;
-        }
-    }
-
-    /**
-     * Cache entry with TTL.
-     */
-    private static class CacheEntry {
-        final String content;
-        final long timestamp;
-
-        CacheEntry(String content) {
-            this.content = content;
-            this.timestamp = System.currentTimeMillis();
-        }
-
-        boolean isExpired() {
-            return (System.currentTimeMillis() - timestamp) > CACHE_TTL_MS;
         }
     }
 }

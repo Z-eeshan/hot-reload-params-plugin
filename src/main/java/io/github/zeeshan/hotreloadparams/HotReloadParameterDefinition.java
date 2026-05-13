@@ -15,12 +15,14 @@ import hudson.model.StringParameterValue;
 import hudson.model.TextParameterValue;
 import jenkins.model.Jenkins;
 import jenkins.model.ParameterizedJobMixIn;
+import jenkins.util.TimeDuration;
 import net.sf.json.JSONArray;
 import net.sf.json.JSONObject;
 import org.jenkinsci.Symbol;
 import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.DataBoundSetter;
 import org.kohsuke.stapler.QueryParameter;
+import org.kohsuke.stapler.Stapler;
 import org.kohsuke.stapler.StaplerRequest2;
 import org.kohsuke.stapler.StaplerResponse2;
 import org.kohsuke.stapler.interceptor.RequirePOST;
@@ -103,6 +105,22 @@ public class HotReloadParameterDefinition extends ParameterDefinition {
         this.defaultBranch = defaultBranch != null ? defaultBranch : "master";
     }
 
+    /**
+     * Full name of the job currently being rendered. Used by the Jelly view to
+     * emit a data attribute the client-side JS reads when redirecting the build
+     * form to this plugin's {@code triggerBuild} endpoint.
+     */
+    public String getCurrentJobFullName() {
+        org.kohsuke.stapler.StaplerRequest2 req = Stapler.getCurrentRequest2();
+        if (req != null) {
+            Job<?, ?> job = req.findAncestorObject(Job.class);
+            if (job != null) {
+                return job.getFullName();
+            }
+        }
+        return "";
+    }
+
     // ── Parameter value creation ───────────────────────────────────────────
     // This plugin contributes NO build parameter values of its own.
     // All real parameters are native Jenkins params and handled by Jenkins core.
@@ -150,7 +168,7 @@ public class HotReloadParameterDefinition extends ParameterDefinition {
 
             JSONObject response = new JSONObject();
 
-            LOGGER.log(Level.INFO, "doFetchParams called: triggerValue={0}, paramFilePath={1}, defaultBranch={2}",
+            LOGGER.log(Level.FINE, "doFetchParams called: triggerValue={0}, paramFilePath={1}, defaultBranch={2}",
                     new Object[]{triggerValue, paramFilePath, defaultBranch});
 
             try {
@@ -165,14 +183,14 @@ public class HotReloadParameterDefinition extends ParameterDefinition {
                     response.put("error", "Could not fetch pipeline file from any branch");
                     response.put("params", new JSONArray());
                 } else {
-                    LOGGER.log(Level.INFO, "Fetched from branch={0}, isFallback={1}, contentLength={2}",
+                    LOGGER.log(Level.FINE, "Fetched from branch={0}, isFallback={1}, contentLength={2}",
                             new Object[]{fetchResult.resolvedBranch, fetchResult.isFallback,
                                     fetchResult.content != null ? fetchResult.content.length() : 0});
 
                     ParamConfigParser parser = new ParamConfigParser();
                     List<ParamConfigParser.ParsedParam> parsedParams = parser.parseParams(fetchResult.content);
 
-                    LOGGER.log(Level.INFO, "Parsed {0} params from branch={1}",
+                    LOGGER.log(Level.FINE, "Parsed {0} params from branch={1}",
                             new Object[]{parsedParams.size(), fetchResult.resolvedBranch});
 
                     response.put("resolvedBranch", fetchResult.resolvedBranch);
@@ -264,6 +282,9 @@ public class HotReloadParameterDefinition extends ParameterDefinition {
 
             List<ParameterValue> values = new ArrayList<>();
             Set<String> seen = new LinkedHashSet<>();
+            // Names of parameters not declared on the job must be explicitly marked "safe"
+            // so SECURITY-170 still lets them propagate to the build environment.
+            Set<String> additionalSafeParameters = new LinkedHashSet<>();
             for (JSONObject jo : entries) {
                 String name = jo.optString("name", null);
                 if (name == null || name.isEmpty()) continue;
@@ -272,10 +293,9 @@ public class HotReloadParameterDefinition extends ParameterDefinition {
 
                 String drpType = jo.optString("drpType", null);
                 ParameterValue pv = null;
+                ParameterDefinition def = pdp != null ? pdp.getParameterDefinition(name) : null;
 
                 if (drpType == null || drpType.isEmpty()) {
-                    // No type hint — trust the job's definition if present.
-                    ParameterDefinition def = pdp != null ? pdp.getParameterDefinition(name) : null;
                     if (def != null) {
                         try {
                             pv = def.createValue(req, jo);
@@ -288,19 +308,43 @@ public class HotReloadParameterDefinition extends ParameterDefinition {
                 if (pv == null) {
                     pv = createFallbackValue(name, drpType, jo);
                 }
-                if (pv != null) values.add(pv);
+                if (pv != null) {
+                    values.add(pv);
+                    if (def == null) {
+                        additionalSafeParameters.add(name);
+                    }
+                }
             }
 
-            LOGGER.log(Level.INFO, "Scheduling build of {0} with {1} parameters",
+            LOGGER.log(Level.FINE, "Scheduling build of {0} with {1} parameters",
                     new Object[]{jobFullName, values.size()});
 
             ParameterizedJobMixIn.ParameterizedJob<?, ?> pjob =
                     (ParameterizedJobMixIn.ParameterizedJob<?, ?>) job;
-            pjob.scheduleBuild2(pjob.getQuietPeriod(),
+            int quietPeriod = resolveQuietPeriod(req, pjob);
+            pjob.scheduleBuild2(quietPeriod,
                     new CauseAction(new Cause.UserIdCause()),
-                    new ParametersAction(values));
+                    new ParametersAction(values, additionalSafeParameters));
 
             rsp.sendRedirect2(req.getContextPath() + "/" + job.getUrl());
+        }
+
+        /**
+         * Resolve the build's quiet period. Honors a {@code delay} URL parameter
+         * (e.g. {@code ?delay=10sec}) the same way Jenkins core does; falls back
+         * to the job's configured quiet period.
+         */
+        private static int resolveQuietPeriod(StaplerRequest2 req,
+                                              ParameterizedJobMixIn.ParameterizedJob<?, ?> pjob) {
+            String delay = req.getParameter("delay");
+            if (delay != null && !delay.isEmpty()) {
+                try {
+                    return TimeDuration.fromString(delay).getTimeInSeconds();
+                } catch (RuntimeException e) {
+                    LOGGER.log(Level.FINE, "Invalid delay value: " + delay + " (" + e.getMessage() + ")");
+                }
+            }
+            return pjob.getQuietPeriod();
         }
 
         /**

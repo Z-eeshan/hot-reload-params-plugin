@@ -108,8 +108,13 @@ public class ParamConfigParser {
      * Splits the parameters block into individual top-level function calls.
      * Tracks paren/bracket/brace depth and quote state so that nested
      * structures (e.g. activeChoice with script blocks) are kept as one call.
-     *
-     * Each returned string looks like: "imageTag(name: 'X', image: 'img', ...)"
+     * <p>
+     * Recognises both the parenthesised form ({@code string(name: 'X', ...)}) and
+     * Groovy's command-expression form emitted by the Pipeline Snippet Generator
+     * ({@code string name: 'X', ...}) — the latter is normalised by wrapping its
+     * argument list in parentheses before returning.
+     * <p>
+     * Each returned string looks like: {@code imageTag(name: 'X', image: 'img', ...)}
      */
     private List<String> splitTopLevelCalls(String block) {
         List<String> calls = new ArrayList<>();
@@ -121,46 +126,99 @@ public class ParamConfigParser {
             while (i < len && Character.isWhitespace(block.charAt(i))) i++;
             if (i >= len) break;
 
-            // Find a call: identifier followed by '('
+            // Find a call: identifier
             int nameStart = i;
             while (i < len && (Character.isLetterOrDigit(block.charAt(i)) || block.charAt(i) == '_')) i++;
             if (i >= len || i == nameStart) { i++; continue; }
             String funcName = block.substring(nameStart, i);
 
-            // Skip whitespace between name and '('
+            // Skip whitespace between name and '(' or first argument
+            int afterName = i;
             while (i < len && Character.isWhitespace(block.charAt(i))) i++;
-            if (i >= len || block.charAt(i) != '(') continue;
+            if (i >= len) break;
 
-            // Now scan to find matching close paren, respecting depth and quotes
-            int callStart = nameStart;
-            int depth = 0;
-            boolean inSingle = false;
-            boolean inDouble = false;
-
-            while (i < len) {
-                char c = block.charAt(i);
-                if (!inSingle && !inDouble) {
-                    if (c == '(') depth++;
-                    else if (c == ')') { depth--; if (depth == 0) { i++; break; } }
-                    else if (c == '[') depth++;
-                    else if (c == ']') depth--;
-                    else if (c == '\'') inSingle = true;
-                    else if (c == '"') inDouble = true;
-                } else if (inSingle) {
-                    if (c == '\'') inSingle = false;
-                } else { // inDouble
-                    if (c == '"') inDouble = false;
+            if (block.charAt(i) == '(') {
+                // Parenthesised form — scan to the matching close paren.
+                int depth = 0;
+                boolean inSingle = false;
+                boolean inDouble = false;
+                while (i < len) {
+                    char c = block.charAt(i);
+                    if (!inSingle && !inDouble) {
+                        if (c == '(') depth++;
+                        else if (c == ')') { depth--; if (depth == 0) { i++; break; } }
+                        else if (c == '[') depth++;
+                        else if (c == ']') depth--;
+                        else if (c == '\'') inSingle = true;
+                        else if (c == '"') inDouble = true;
+                    } else if (inSingle) {
+                        if (c == '\'') inSingle = false;
+                    } else {
+                        if (c == '"') inDouble = false;
+                    }
+                    i++;
                 }
-                i++;
-            }
-
-            String fullCall = block.substring(callStart, i).trim();
-            if (!fullCall.isEmpty()) {
-                calls.add(fullCall);
+                String fullCall = block.substring(nameStart, i).trim();
+                if (!fullCall.isEmpty()) calls.add(fullCall);
+            } else if (isCommandCallStart(funcName, block, i)) {
+                // Parenthesis-less command-expression form. Args extend until the
+                // statement terminator: a newline (or ';') that is not inside a
+                // quoted string or nested bracket pair.
+                int argsStart = i;
+                int depth = 0;
+                boolean inSingle = false;
+                boolean inDouble = false;
+                while (i < len) {
+                    char c = block.charAt(i);
+                    if (!inSingle && !inDouble) {
+                        if (c == '(' || c == '[' || c == '{') depth++;
+                        else if (c == ')' || c == ']' || c == '}') {
+                            if (depth == 0) break;
+                            depth--;
+                        } else if (c == '\'') inSingle = true;
+                        else if (c == '"') inDouble = true;
+                        else if (depth == 0 && (c == '\n' || c == ';')) break;
+                    } else if (inSingle) {
+                        if (c == '\'') inSingle = false;
+                    } else {
+                        if (c == '"') inDouble = false;
+                    }
+                    i++;
+                }
+                String args = block.substring(argsStart, i).trim();
+                if (!args.isEmpty()) {
+                    calls.add(funcName + "(" + args + ")");
+                }
+            } else {
+                // Identifier without args we recognise; back up to just after the
+                // identifier so the outer loop can advance past whatever follows.
+                i = afterName;
             }
         }
 
         return calls;
+    }
+
+    /**
+     * Decide whether a known function name followed by no '(' is the start of a
+     * Groovy command-expression call (e.g. {@code booleanParam name: 'x'}).
+     * Requires the next non-whitespace char to look like the start of a
+     * key-value argument (identifier followed by ':') or a quoted positional
+     * argument, to avoid mis-interpreting stray identifiers as calls.
+     */
+    private boolean isCommandCallStart(String funcName, String block, int pos) {
+        if (!KNOWN_TYPES.contains(funcName)) return false;
+        int len = block.length();
+        if (pos >= len) return false;
+        char c = block.charAt(pos);
+        if (c == '\'' || c == '"') return true;
+        if (Character.isLetter(c) || c == '_') {
+            int j = pos;
+            while (j < len && (Character.isLetterOrDigit(block.charAt(j)) || block.charAt(j) == '_')) j++;
+            while (j < len && Character.isWhitespace(block.charAt(j))) j++;
+            return j < len && block.charAt(j) == ':';
+        }
+        return false;
     }
 
     // ── Parse a single call ────────────────────────────────────────────────
