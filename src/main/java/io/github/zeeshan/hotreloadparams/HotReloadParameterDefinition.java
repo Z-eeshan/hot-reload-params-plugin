@@ -142,6 +142,15 @@ public class HotReloadParameterDefinition extends ParameterDefinition {
     @Symbol("hotReloadParams")
     public static class DescriptorImpl extends ParameterDefinition.ParameterDescriptor {
 
+        /**
+         * Allow-list of {@code drpType} values the client may submit for a
+         * parameter that is not declared on the job. Anything outside this set
+         * is rejected so an {@code Item.BUILD}-only user can't smuggle arbitrary
+         * names into {@code additionalSafeParameters} and bypass SECURITY-170.
+         */
+        private static final Set<String> KNOWN_DRP_TYPES = Set.of(
+                "boolean", "password", "text", "choice", "string", "imageTag");
+
         @Override
         public String getDisplayName() {
             return "Hot Reload Parameters";
@@ -292,17 +301,26 @@ public class HotReloadParameterDefinition extends ParameterDefinition {
                 if (!seen.add(name)) continue;
 
                 String drpType = jo.optString("drpType", null);
-                ParameterValue pv = null;
                 ParameterDefinition def = pdp != null ? pdp.getParameterDefinition(name) : null;
 
-                if (drpType == null || drpType.isEmpty()) {
-                    if (def != null) {
-                        try {
-                            pv = def.createValue(req, jo);
-                        } catch (RuntimeException e) {
-                            LOGGER.log(Level.FINE,
-                                    "Falling back to string value for " + name + ": " + e.getMessage());
-                        }
+                // A parameter not declared on the job is only acceptable if the
+                // client supplied a known drpType. Without this gate any name in
+                // the POST body would be marked as an additionalSafeParameter,
+                // letting a user with Item.BUILD bypass SECURITY-170 env filtering.
+                if (def == null && (drpType == null || !KNOWN_DRP_TYPES.contains(drpType))) {
+                    LOGGER.log(Level.FINE,
+                            "Skipping unknown parameter {0} with drpType={1}",
+                            new Object[]{name, drpType});
+                    continue;
+                }
+
+                ParameterValue pv = null;
+                if ((drpType == null || drpType.isEmpty()) && def != null) {
+                    try {
+                        pv = def.createValue(req, jo);
+                    } catch (RuntimeException e) {
+                        LOGGER.log(Level.FINE,
+                                "Falling back to string value for " + name + ": " + e.getMessage());
                     }
                 }
                 if (pv == null) {
@@ -339,7 +357,11 @@ public class HotReloadParameterDefinition extends ParameterDefinition {
             String delay = req.getParameter("delay");
             if (delay != null && !delay.isEmpty()) {
                 try {
-                    return TimeDuration.fromString(delay).getTimeInSeconds();
+                    // TimeDuration.fromString is @CheckForNull; guard before deref.
+                    TimeDuration td = TimeDuration.fromString(delay);
+                    if (td != null) {
+                        return td.getTimeInSeconds();
+                    }
                 } catch (RuntimeException e) {
                     LOGGER.log(Level.FINE, "Invalid delay value: " + delay + " (" + e.getMessage() + ")");
                 }

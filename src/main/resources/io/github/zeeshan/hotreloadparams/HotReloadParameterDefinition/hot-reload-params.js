@@ -552,9 +552,13 @@
     wrapper.appendChild(badge);
   }
 
+  function sanitizeId(name) {
+    return String(name == null ? "" : name).replace(/[^A-Za-z0-9_-]/g, "_");
+  }
+
   /**
-   * Booleans render as a Jenkins toggle checkbox: a wrapping <label> with the
-   * checkbox followed by the parameter name. Mirrors the markup Jenkins core
+   * Booleans render as a <div class="jenkins-checkbox"> containing the
+   * checkbox followed by its <label for=...>. Mirrors the markup Jenkins core
    * emits for a BooleanParameterDefinition so the toggle picks up native theme
    * styling rather than the default browser checkbox.
    */
@@ -565,7 +569,9 @@
     var checkbox = document.createElement("input");
     checkbox.type = "checkbox";
     checkbox.name = "value";
-    checkbox.id = "drp-cb-" + param.name;
+    // Jenkins parameter names are user-controlled and may contain whitespace
+    // or punctuation that's awkward in an HTML id / `label[for]` selector.
+    checkbox.id = "drp-cb-" + sanitizeId(param.name);
     checkbox.checked = param.defaultValue === "true";
     checkboxRow.appendChild(checkbox);
 

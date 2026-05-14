@@ -17,7 +17,7 @@
        data-descriptor-url="${descriptor.descriptorUrl}"
        data-job-full-name="${it.currentJobFullName}">
 
-    <div id="drp-status-banner" class="jenkins-alert jenkins-hidden"/>
+    <div id="drp-status-banner" class="jenkins-alert jenkins-hidden"></div>
 
     <div id="drp-loading" class="jenkins-hidden">
       <l:spinner text="${%Updating parameter defaults...}"/>
