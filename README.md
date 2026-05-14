@@ -23,43 +23,9 @@ The plugin resolves the trigger value to a Git branch in this order:
 
 Results are cached in-memory for 60 seconds to avoid redundant Git clones.
 
-## Prerequisites
-
-### Jenkins Version
-
-- **Jenkins 2.440** or newer
-
-### Java Version
-
-- **Java 17** or newer (both for building and at runtime)
-
-### Required Jenkins Plugins
-
-These must be installed on your Jenkins instance before loading this plugin:
-
-| Plugin                                                              | Minimum Version |
-| ------------------------------------------------------------------- | --------------- |
-| [Git](https://plugins.jenkins.io/git/)                              | 5.2.1           |
-| [Git Client](https://plugins.jenkins.io/git-client/)                | 4.6.0           |
-| [Credentials](https://plugins.jenkins.io/credentials/)              | 1337.v60b       |
-| [Plain Credentials](https://plugins.jenkins.io/plain-credentials/)  | 179.vc5cb       |
-| [Workflow: Step API](https://plugins.jenkins.io/workflow-step-api/) | 657.v03b        |
-| [Workflow: CPS](https://plugins.jenkins.io/workflow-cps/)           | 3883.vb_3ff     |
-| [Structs](https://plugins.jenkins.io/structs/)                      | 337.v1b         |
-| [Script Security](https://plugins.jenkins.io/script-security/)      | 1326.vdb        |
-
 ### Git Credentials
 
 If the target Git repository is private, configure a **Username/Password** credential in Jenkins (Manage Jenkins > Credentials) and reference its ID in the plugin configuration.
-
-## Installation
-
-### From .hpi file
-
-1. Build the plugin (see [Building](#building) below) or download a release `.hpi`.
-2. Go to **Manage Jenkins > Plugins > Advanced settings**.
-3. Under **Deploy Plugin**, upload the `hot-reload-params.hpi` file.
-4. Restart Jenkins if prompted.
 
 ## Usage
 
@@ -136,6 +102,27 @@ When a user types `feature/payments-v2` in the `RELEASE_BRANCH` field, the plugi
 - Creates a new `FEATURE_FLAG` input (since it doesn't exist on `master`)
 - All changes happen instantly on the page without a reload
 
+### Supported Parameter Syntax
+
+The parser recognises both the standard Groovy DSL form with parentheses:
+
+```groovy
+parameters {
+    string(name: 'TAG', defaultValue: 'latest', description: 'Image tag')
+    booleanParam(name: 'DEBUG', defaultValue: false, description: 'Verbose logs')
+}
+```
+
+and the parenthesis-less command form emitted by Jenkins' Pipeline Snippet
+Generator (one call per line):
+
+```groovy
+parameters {
+    booleanParam defaultValue: true, description: 'my test', name: 'test'
+    string defaultValue: 'test', description: 'my string', name: 'str'
+}
+```
+
 ### hotReloadParams Configuration Options
 
 | Parameter          | Required | Default                        | Description                                                                   |
@@ -176,74 +163,10 @@ GET ${JENKINS_URL}/descriptorByName/io.github.zeeshan.hotreloadparams.HotReloadP
 
 This requires `Jenkins.ADMINISTER` permission.
 
-## Building
+## Contributing
 
-### Requirements
-
-- **JDK 17+**
-- **Maven 3.8+**
-
-### Build Locally
-
-```bash
-mvn clean package
-```
-
-Artifacts are produced in `target/`:
-
-- `target/hot-reload-params.hpi` -- the installable plugin file
-- `target/hot-reload-params.jar` -- the JAR library
-
-### Run Tests
-
-```bash
-mvn test
-```
-
-### Build with Docker
-
-No local JDK or Maven installation required:
-
-```bash
-# Build the Docker image
-docker build -t hot-reload-params-builder .
-
-# Run it and export artifacts to ./out/
-mkdir -p out
-docker run --rm -v "$(pwd)/out:/out" hot-reload-params-builder
-```
-
-The `.hpi` and `.jar` files will be in the `out/` directory.
-
-### Run for Local Development
-
-Start a Jenkins instance with the plugin loaded for testing:
-
-```bash
-mvn hpi:run
-```
-
-Jenkins will be available at `http://localhost:8080/jenkins/`.
-
-## Architecture
-
-```
-src/main/java/io/github/zeeshan/hotreloadparams/
-  HotReloadParameterDefinition.java   # ParameterDefinition extension + AJAX descriptor
-  HotReloadParameterValue.java        # Composite ParameterValue (env var injection)
-  ConfigFetcher.java                  # JGit-based Git file fetcher with caching
-  ParamConfigParser.java              # Structural Groovy DSL parser
-  model/
-    ParamType.java                    # Enum of supported DSL parameter types
-    ParamConfig.java                  # Parsed parameter config data class
-
-src/main/resources/
-  index.jelly                         # Plugin description
-    .../HotReloadParameterDefinition/
-    config.jelly                      # Job configuration form
-    index.jelly                       # Build-with-Parameters page (JS injection)
-    hot-reload-params.js              # Client-side AJAX logic
-```
+See [CONTRIBUTING.md](CONTRIBUTING.md) for instructions on building the plugin
+from source and running it locally.
 
 ## License
 

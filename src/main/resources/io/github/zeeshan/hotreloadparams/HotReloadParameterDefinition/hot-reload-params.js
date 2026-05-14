@@ -44,6 +44,7 @@
         root.getAttribute("data-trigger-param-name") || "RELEASE_BRANCH",
       defaultBranch: root.getAttribute("data-default-branch") || "master",
       descriptorUrl: root.getAttribute("data-descriptor-url"),
+      jobFullName: root.getAttribute("data-job-full-name") || "",
     };
 
     attachTriggerListener();
@@ -476,12 +477,10 @@
   // ── Create new parameter DOM entries ─────────────────────────────────────
 
   function createParamRow(param) {
-    // Create a Jenkins-style parameter entry
     var wrapper = document.createElement("div");
     wrapper.className = "jenkins-form-item tr";
     wrapper.setAttribute("name", "parameter");
     wrapper.setAttribute("data-drp-dynamic", "true");
-    wrapper.style.padding = "8px 0";
 
     // Hidden "name" input (required for Jenkins form submission)
     var nameInput = document.createElement("input");
@@ -498,63 +497,100 @@
     typeInput.value = param.type || "string";
     wrapper.appendChild(typeInput);
 
-    // Label
+    if (param.type === "boolean") {
+      buildBooleanRow(wrapper, param);
+    } else {
+      appendLabel(wrapper, param);
+      var valueInput;
+      if (param.type === "choice" && Array.isArray(param.choices)) {
+        var selectWrapper = document.createElement("div");
+        selectWrapper.className = "jenkins-select";
+        valueInput = document.createElement("select");
+        valueInput.name = "value";
+        valueInput.className = "jenkins-select__input";
+        rebuildSelectOptions(valueInput, param.choices, param.defaultValue || "");
+        selectWrapper.appendChild(valueInput);
+        wrapper.appendChild(selectWrapper);
+      } else if (param.type === "text") {
+        valueInput = document.createElement("textarea");
+        valueInput.name = "value";
+        valueInput.value = param.defaultValue || "";
+        valueInput.className = "jenkins-input";
+        valueInput.rows = 4;
+        wrapper.appendChild(valueInput);
+      } else {
+        valueInput = document.createElement("input");
+        valueInput.type = param.type === "password" ? "password" : "text";
+        valueInput.name = "value";
+        valueInput.value = param.defaultValue || "";
+        valueInput.className = "jenkins-input";
+        wrapper.appendChild(valueInput);
+      }
+      appendBadge(wrapper);
+    }
+
+    return wrapper;
+  }
+
+  function appendLabel(wrapper, param) {
     var label = document.createElement("div");
-    label.style.cssText =
-      "font-weight: bold; margin-bottom: 4px; font-size: 13px;";
+    label.className = "jenkins-form-label";
     label.textContent = param.name;
     if (param.description) {
-      var desc = document.createElement("span");
-      desc.style.cssText =
-        "font-weight: normal; color: #666; margin-left: 8px; font-size: 12px;";
+      var desc = document.createElement("div");
+      desc.className = "jenkins-form-description";
       desc.textContent = param.description;
       label.appendChild(desc);
     }
     wrapper.appendChild(label);
+  }
 
-    // Value input
-    var valueInput;
-
-    if (param.type === "boolean") {
-      valueInput = document.createElement("input");
-      valueInput.type = "checkbox";
-      valueInput.name = "value";
-      valueInput.checked = param.defaultValue === "true";
-    } else if (param.type === "choice" && Array.isArray(param.choices)) {
-      valueInput = document.createElement("select");
-      valueInput.name = "value";
-      valueInput.className = "jenkins-select__input";
-      valueInput.style.cssText =
-        "width: 100%; max-width: 500px; padding: 6px 8px; border: 1px solid #ccc; border-radius: 4px;";
-      rebuildSelectOptions(valueInput, param.choices, param.defaultValue || "");
-    } else if (param.type === "text") {
-      valueInput = document.createElement("textarea");
-      valueInput.name = "value";
-      valueInput.value = param.defaultValue || "";
-      valueInput.className = "jenkins-input";
-      valueInput.rows = 4;
-      valueInput.style.cssText =
-        "width: 100%; max-width: 500px; padding: 6px 8px; border: 1px solid #ccc; border-radius: 4px;";
-    } else {
-      valueInput = document.createElement("input");
-      valueInput.type = param.type === "password" ? "password" : "text";
-      valueInput.name = "value";
-      valueInput.value = param.defaultValue || "";
-      valueInput.className = "jenkins-input";
-      valueInput.style.cssText =
-        "width: 100%; max-width: 500px; padding: 6px 8px; border: 1px solid #ccc; border-radius: 4px;";
-    }
-
-    wrapper.appendChild(valueInput);
-
-    // Dynamic badge
+  function appendBadge(wrapper) {
     var badge = document.createElement("span");
-    badge.style.cssText =
-      "display: inline-block; margin-left: 8px; padding: 1px 6px; font-size: 10px; background: #e3f2fd; color: #1565c0; border-radius: 3px;";
+    badge.className = "jenkins-badge jenkins-!-margin-left-1";
     badge.textContent = "from branch";
     wrapper.appendChild(badge);
+  }
 
-    return wrapper;
+  function sanitizeId(name) {
+    return String(name == null ? "" : name).replace(/[^A-Za-z0-9_-]/g, "_");
+  }
+
+  /**
+   * Booleans render as a <div class="jenkins-checkbox"> containing the
+   * checkbox followed by its <label for=...>. Mirrors the markup Jenkins core
+   * emits for a BooleanParameterDefinition so the toggle picks up native theme
+   * styling rather than the default browser checkbox.
+   */
+  function buildBooleanRow(wrapper, param) {
+    var checkboxRow = document.createElement("div");
+    checkboxRow.className = "jenkins-checkbox";
+
+    var checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.name = "value";
+    // Jenkins parameter names are user-controlled and may contain whitespace
+    // or punctuation that's awkward in an HTML id / `label[for]` selector.
+    checkbox.id = "drp-cb-" + sanitizeId(param.name);
+    checkbox.checked = param.defaultValue === "true";
+    checkboxRow.appendChild(checkbox);
+
+    var labelEl = document.createElement("label");
+    labelEl.setAttribute("for", checkbox.id);
+    labelEl.className = "jenkins-checkbox__label";
+    labelEl.textContent = param.name;
+    checkboxRow.appendChild(labelEl);
+
+    wrapper.appendChild(checkboxRow);
+
+    if (param.description) {
+      var desc = document.createElement("div");
+      desc.className = "jenkins-form-description";
+      desc.textContent = param.description;
+      wrapper.appendChild(desc);
+    }
+
+    appendBadge(wrapper);
   }
 
   // ── Build-form hijack ────────────────────────────────────────────────────
@@ -602,65 +638,64 @@
   }
 
   /**
-   * Derive the job's full name from the current URL.
-   * Jenkins URLs look like /job/A/job/B/job/C/build → full name "A/B/C".
+   * The job's full name comes straight from the Jelly view as a data attribute.
+   * Avoids parsing window.location, which would break under non-standard URL
+   * prefixes (e.g. `mvn hpi:run` serves Jenkins at `/jenkins/`).
    */
   function getJobFullName() {
-    var path = window.location.pathname || "";
-    var rootMeta = document.head.querySelector('meta[name="rootURL"]');
-    var prefix = rootMeta ? rootMeta.content : "";
-    if (prefix && path.indexOf(prefix) === 0) {
-      path = path.substring(prefix.length);
-    }
-    path = path.replace(
-      /\/(build|buildWithParameters|rebuild|parambuild)(\/?.*)?$/,
-      "",
-    );
-    var segments = path.split("/job/").filter(function (p) {
-      return p && p !== "/";
-    });
-    return segments.join("/").replace(/^\/+|\/+$/g, "");
+    return config.jobFullName || "";
   }
 
   // ── UI Helpers ────────────────────────────────────────────────────────────
 
   function showLoading(show) {
     var el = document.getElementById("drp-loading");
-    if (el) el.style.display = show ? "block" : "none";
+    if (!el) return;
+    if (show) {
+      el.classList.remove("jenkins-hidden");
+    } else {
+      el.classList.add("jenkins-hidden");
+    }
   }
+
+  var BANNER_VARIANTS = [
+    "jenkins-alert-success",
+    "jenkins-alert-warning",
+    "jenkins-alert-danger",
+    "jenkins-alert-info",
+  ];
 
   function showBanner(type, message) {
     var banner = document.getElementById("drp-status-banner");
     if (!banner) return;
-    banner.style.display = "block";
     banner.textContent = message;
+    for (var i = 0; i < BANNER_VARIANTS.length; i++) {
+      banner.classList.remove(BANNER_VARIANTS[i]);
+    }
     switch (type) {
       case "success":
-        banner.style.background = "#e6f4ea";
-        banner.style.color = "#137333";
-        banner.style.border = "1px solid #a8dab5";
+        banner.classList.add("jenkins-alert-success");
         break;
       case "warning":
-        banner.style.background = "#fef7e0";
-        banner.style.color = "#b45309";
-        banner.style.border = "1px solid #fcd34d";
+        banner.classList.add("jenkins-alert-warning");
         break;
       case "error":
-        banner.style.background = "#fce8e6";
-        banner.style.color = "#c5221f";
-        banner.style.border = "1px solid #f5c6cb";
+        banner.classList.add("jenkins-alert-danger");
         break;
+      default:
+        banner.classList.add("jenkins-alert-info");
     }
+    banner.classList.remove("jenkins-hidden");
     if (type === "success") {
       setTimeout(function () {
-        banner.style.display = "none";
+        banner.classList.add("jenkins-hidden");
       }, 5000);
     }
   }
 
   function hideBanner() {
     var banner = document.getElementById("drp-status-banner");
-    if (banner) banner.style.display = "none";
+    if (banner) banner.classList.add("jenkins-hidden");
   }
 
   function getCrumb() {
@@ -679,7 +714,12 @@
   }
 
   function getRootUrl() {
-    var rootUrl = document.head.querySelector('meta[name="rootURL"]');
+    if (document.head && document.head.dataset && document.head.dataset.rooturl) {
+      return document.head.dataset.rooturl;
+    }
+    var rootUrl = document.head
+      ? document.head.querySelector('meta[name="rootURL"]')
+      : null;
     if (rootUrl) return rootUrl.content;
     return window.rootURL || "";
   }

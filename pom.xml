@@ -41,7 +41,7 @@
 
     <properties>
         <changelist>999999-SNAPSHOT</changelist>
-        <gitHubRepo>z-eeshan/hot-reload-params-plugin</gitHubRepo>
+        <gitHubRepo>jenkinsci/hot-reload-params-plugin</gitHubRepo>
         <!-- https://www.jenkins.io/doc/developer/plugin-development/choosing-jenkins-baseline/ -->
         <jenkins.baseline>2.528</jenkins.baseline>
         <jenkins.version>${jenkins.baseline}.3</jenkins.version>
@@ -95,37 +95,9 @@
         </dependency>
 
         <dependency>
-            <groupId>org.jenkins-ci.plugins.workflow</groupId>
-            <artifactId>workflow-step-api</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.jenkins-ci.plugins.workflow</groupId>
-            <artifactId>workflow-cps</artifactId>
-        </dependency>
-
-        <dependency>
-            <groupId>org.jenkins-ci.plugins</groupId>
-            <artifactId>structs</artifactId>
-        </dependency>
-
-        <dependency>
-            <groupId>org.jenkins-ci.plugins</groupId>
-            <artifactId>script-security</artifactId>
-        </dependency>
-
-        <!-- Jackson for JSON (provided by Jenkins core) -->
-        <dependency>
-            <groupId>com.fasterxml.jackson.core</groupId>
-            <artifactId>jackson-databind</artifactId>
-            <version>2.21.3</version>
-            <scope>provided</scope>
-        </dependency>
-
-        <!-- Test dependencies -->
-        <dependency>
-            <groupId>org.mockito</groupId>
-            <artifactId>mockito-core</artifactId>
-            <scope>test</scope>
+            <groupId>io.jenkins.plugins</groupId>
+            <artifactId>caffeine-api</artifactId>
+            <version>3.2.3-194.v31a_b_f7a_b_5a_81</version>
         </dependency>
     </dependencies>
 
