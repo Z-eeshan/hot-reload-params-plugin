@@ -1,23 +1,21 @@
 <?jelly escape-by-default='true'?>
-<j:jelly xmlns:j="jelly:core" xmlns:f="/lib/form" xmlns:l="/lib/layout" xmlns:st="jelly:stapler">
+<j:jelly xmlns:j="jelly:core" xmlns:l="/lib/layout" xmlns:st="jelly:stapler">
 
   <!--
     index.jelly – Rendered on the "Build with Parameters" page.
     This plugin does NOT render its own parameter fields.
     It only injects JavaScript that watches the trigger param (e.g. RELEASE_BRANCH)
-    and updates the default values of other (normal) parameters via AJAX.
+    and updates the other (normal) parameters via AJAX. Repository details are never
+    exposed to the page; the endpoints read them from the job's configuration.
   -->
 
   <div id="hot-reload-params-root"
-       data-repo-url="${it.repoUrl}"
-       data-credentials-id="${it.credentialsId}"
-       data-param-file-path="${it.paramFilePath}"
-       data-trigger-param-name="${it.triggerParamName}"
-       data-default-branch="${it.defaultBranch}"
-       data-descriptor-url="${descriptor.descriptorUrl}"
+       data-trigger-param-name="${it.effectiveTriggerParamName}"
+       data-default-branch="${it.effectiveDefaultBranch}"
+       data-endpoint-url="${it.endpointUrl}"
        data-job-full-name="${it.currentJobFullName}">
 
-    <div id="drp-status-banner" class="jenkins-alert jenkins-hidden"></div>
+    <div id="drp-status-banner" class="jenkins-alert jenkins-hidden" role="status"></div>
 
     <div id="drp-loading" class="jenkins-hidden">
       <l:spinner text="${%Updating parameter defaults...}"/>

@@ -1,34 +1,29 @@
 <?jelly escape-by-default='true'?>
-<j:jelly xmlns:j="jelly:core" xmlns:f="/lib/form" xmlns:st="jelly:stapler">
+<j:jelly xmlns:j="jelly:core" xmlns:f="/lib/form">
 
   <!--
     config.jelly – Displayed in the job configuration page under "This project is parameterized"
     when the user adds a "Hot Reload Parameters" parameter definition.
   -->
 
-  <f:entry title="Git Repository URL" field="repoUrl">
-    <f:textbox default=""
-               description="URL of the Git repo containing the parameter definitions file"/>
+  <f:entry title="${%repoUrl.title}" field="repoUrl" description="${%repoUrl.description}">
+    <f:textbox/>
   </f:entry>
 
-  <f:entry title="Credentials ID" field="credentialsId">
-    <f:textbox default=""
-               description="Jenkins credentials ID for Git authentication (leave empty for anonymous)"/>
+  <f:entry title="${%credentialsId.title}" field="credentialsId" description="${%credentialsId.description}">
+    <f:textbox/>
   </f:entry>
 
-  <f:entry title="Parameter File Path" field="paramFilePath">
-    <f:textbox default="vars/release-pipeline.groovy"
-               description="Path to the Groovy file within the repo that contains a parameters {} block"/>
+  <f:entry title="${%paramFilePath.title}" field="paramFilePath" description="${%paramFilePath.description}">
+    <f:textbox default="vars/release-pipeline.groovy"/>
   </f:entry>
 
-  <f:entry title="Trigger Parameter Name" field="triggerParamName">
-    <f:textbox default="RELEASE_BRANCH"
-               description="The parameter whose value changes trigger a reload of dynamic parameters"/>
+  <f:entry title="${%triggerParamName.title}" field="triggerParamName" description="${%triggerParamName.description}">
+    <f:textbox default="RELEASE_BRANCH"/>
   </f:entry>
 
-  <f:entry title="Default Branch" field="defaultBranch">
-    <f:textbox default="master"
-               description="Git branch to use when the trigger value doesn't match any branch"/>
+  <f:entry title="${%defaultBranch.title}" field="defaultBranch" description="${%defaultBranch.description}">
+    <f:textbox default="master"/>
   </f:entry>
 
 </j:jelly>

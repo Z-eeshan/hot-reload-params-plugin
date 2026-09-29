@@ -244,4 +244,32 @@ class ParamConfigParserTest {
         assertEquals("true", defaults.get("test"));
         assertEquals("test", defaults.get("str"));
     }
+
+    @Test
+    void textParam() throws Exception {
+        String pipeline = "pipeline {\n" +
+                "  parameters {\n" +
+                "    text(name: 'NOTES', defaultValue: 'line1\\nline2', description: 'Notes')\n" +
+                "  }\n" +
+                "}";
+        List<ParamConfigParser.ParsedParam> params = parser.parseParams(pipeline);
+        assertEquals(1, params.size());
+        assertEquals("text", params.get(0).type);
+        assertEquals("NOTES", params.get(0).name);
+    }
+
+    @Test
+    void separatorIsParsedButHasNoDefault() throws Exception {
+        String pipeline = "pipeline {\n" +
+                "  parameters {\n" +
+                "    separator(name: 'SECTION', sectionHeader: 'Deployment')\n" +
+                "    string(name: 'X', defaultValue: '1')\n" +
+                "  }\n" +
+                "}";
+        List<ParamConfigParser.ParsedParam> params = parser.parseParams(pipeline);
+        assertEquals(2, params.size());
+        assertEquals("separator", params.get(0).type);
+        assertEquals("Deployment", params.get(0).sectionHeader);
+        assertEquals(1, parser.parseDefaults(pipeline).size());
+    }
 }
