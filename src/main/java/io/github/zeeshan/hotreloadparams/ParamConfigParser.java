@@ -26,6 +26,7 @@ public class ParamConfigParser {
     private static final Set<String> KNOWN_TYPES = new LinkedHashSet<>();
     static {
         KNOWN_TYPES.add("string");
+        KNOWN_TYPES.add("text");
         KNOWN_TYPES.add("booleanParam");
         KNOWN_TYPES.add("password");
         KNOWN_TYPES.add("choice");
@@ -56,7 +57,7 @@ public class ParamConfigParser {
             this.image = image;
             this.defaultTag = defaultTag;
             this.sectionHeader = sectionHeader;
-            this.choices = choices != null ? choices : Collections.emptyList();
+            this.choices = choices != null ? List.copyOf(choices) : Collections.emptyList();
         }
     }
 
@@ -254,6 +255,10 @@ public class ParamConfigParser {
         switch (funcName) {
             case "string":
                 type = "string";
+                defaultValue = args.getOrDefault("defaultValue", "");
+                break;
+            case "text":
+                type = "text";
                 defaultValue = args.getOrDefault("defaultValue", "");
                 break;
             case "booleanParam":

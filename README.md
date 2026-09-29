@@ -1,31 +1,32 @@
 # Hot Reload Parameters Plugin for Jenkins
 
-A Jenkins plugin that dynamically reloads parameter default values on the **Build with Parameters** page when a trigger parameter changes. It fetches a Groovy DSL file from a Git branch matching the trigger value and updates all other parameter defaults in-place via AJAX -- no page reload required.
+A Jenkins plugin that reloads parameter default values on the **Build with Parameters** page when a trigger parameter changes. It reads a Groovy DSL file from the Git branch (or tag) matching the trigger value and updates the other parameters in place, without a page reload, a rebuild, or a job reconfiguration.
 
 ## How It Works
 
-1. You define your pipeline parameters normally (`string`, `booleanParam`, `choice`, `imageTag`, etc.) in a `Jenkinsfile` or a shared-library Groovy file.
-2. You add a single `hotReloadParams(...)` entry that tells the plugin which Git repo, file path, and trigger parameter to watch.
+1. You define your pipeline parameters normally (`string`, `booleanParam`, `choice`, `text`, `password`, ...) in a `Jenkinsfile` or a shared-library Groovy file.
+2. You add a single `hotReloadParams(...)` entry that tells the plugin which Git repository, file path, and trigger parameter to watch.
 3. On the **Build with Parameters** page, when a user changes the trigger parameter (e.g. `RELEASE_BRANCH`), the plugin:
-   - Fetches the Groovy DSL file from the Git branch matching the new value
+   - Fetches the Groovy DSL file from the Git branch or tag matching the new value
    - Parses all `parameters {}` definitions from that branch
-   - Updates default values of existing fields on the page
+   - Updates the default values of existing fields on the page
    - Hides parameters that don't exist on the target branch
-   - Creates placeholder inputs for parameters that are new on the target branch
+   - Adds inputs for parameters that only exist on the target branch
+4. When the user clicks **Build**, the plugin fetches the same file again on the server and only accepts parameters that are declared on the job or defined in that branch's file (see [Security](#security)).
 
 ### Branch Resolution
 
-The plugin resolves the trigger value to a Git branch in this order:
+The plugin resolves the trigger value to a Git ref in this order:
 
-1. Exact match (e.g. `release/v1.1.0`)
-2. Suffix after the last `/` (e.g. `v1.1.0` from `release/v1.1.0`)
-3. Fallback to the configured `defaultBranch` (e.g. `master`)
+1. Exact branch or tag name (e.g. `release/v1.1.0`)
+2. The part after the last `/` (e.g. `v1.1.0` from `release/v1.1.0`)
+3. The configured `defaultBranch` (e.g. `master`)
 
-Results are cached in-memory for 60 seconds to avoid redundant Git clones.
+Fetched files are cached in memory for 60 seconds.
 
 ### Git Credentials
 
-If the target Git repository is private, configure a **Username/Password** credential in Jenkins (Manage Jenkins > Credentials) and reference its ID in the plugin configuration.
+If the target Git repository is private, configure a **Username with password** credential in Jenkins and reference its ID in `credentialsId`. Credentials are resolved in the scope of the job, so folder-scoped credentials work.
 
 ## Usage
 
@@ -65,9 +66,7 @@ pipeline {
 
 ### Groovy DSL File
 
-The `paramFilePath` points to any Groovy file in your repo that contains a `parameters {}` block. The plugin fetches this file from the Git branch matching the trigger value.
-
-For example, if your `paramFilePath` is `vars/release-pipeline.groovy`, the plugin reads that file from whichever branch the user selects.
+`paramFilePath` points to any Groovy file in the repository that contains a `parameters {}` block. The plugin reads this file from the branch matching the trigger value.
 
 #### `vars/release-pipeline.groovy` on `master`
 
@@ -99,8 +98,8 @@ When a user types `feature/payments-v2` in the `RELEASE_BRANCH` field, the plugi
 - Updates `DEPLOY_ENV` from `staging` to `dev`
 - Updates `API_VERSION` from `v1` to `v2`
 - Flips `SKIP_TESTS` to `true` and `NOTIFY_SLACK` to `false`
-- Creates a new `FEATURE_FLAG` input (since it doesn't exist on `master`)
-- All changes happen instantly on the page without a reload
+- Adds a new `FEATURE_FLAG` input (since it doesn't exist on `master`)
+- Rebuilds the `LOG_LEVEL` choices in the branch's order
 
 ### Supported Parameter Syntax
 
@@ -113,8 +112,7 @@ parameters {
 }
 ```
 
-and the parenthesis-less command form emitted by Jenkins' Pipeline Snippet
-Generator (one call per line):
+and the parenthesis-less command form emitted by Jenkins' Pipeline Snippet Generator (one call per line):
 
 ```groovy
 parameters {
@@ -123,27 +121,28 @@ parameters {
 }
 ```
 
-### hotReloadParams Configuration Options
+### `hotReloadParams` Configuration Options
 
 | Parameter          | Required | Default                        | Description                                                                   |
 | ------------------ | -------- | ------------------------------ | ----------------------------------------------------------------------------- |
 | `repoUrl`          | Yes      | --                             | Git repository URL containing the DSL file                                    |
-| `credentialsId`    | No       | `""`                           | Jenkins credentials ID for Git authentication                                 |
+| `credentialsId`    | No       | `""`                           | ID of a username/password credential used to read the repository             |
 | `paramFilePath`    | No       | `vars/release-pipeline.groovy` | Path to the Groovy file within the repo that contains a `parameters {}` block |
 | `triggerParamName` | No       | `RELEASE_BRANCH`               | Name of the parameter that triggers a reload                                  |
-| `defaultBranch`    | No       | `master`                       | Fallback branch when the trigger value doesn't match                          |
+| `defaultBranch`    | No       | `master`                       | Fallback branch when the trigger value doesn't match a branch or tag          |
 
 ### Supported Parameter Types
 
-| Type          | DSL Function        | Reloaded Fields             |
-| ------------- | ------------------- | --------------------------- |
-| String        | `string(...)`       | `defaultValue`              |
-| Boolean       | `booleanParam(...)` | `defaultValue`              |
-| Password      | `password(...)`     | `defaultValue`              |
-| Choice        | `choice(...)`       | `choices` + default (first) |
-| Image Tag     | `imageTag(...)`     | `defaultTag`                |
-| Active Choice | `activeChoice(...)` | visibility                  |
-| Separator     | `separator(...)`    | visibility                  |
+| Type          | DSL Function        | Reloaded Fields             | Value type when only defined on the branch |
+| ------------- | ------------------- | --------------------------- | ------------------------------------------ |
+| String        | `string(...)`       | `defaultValue`              | String parameter                           |
+| Text          | `text(...)`         | `defaultValue`              | Text parameter                             |
+| Boolean       | `booleanParam(...)` | `defaultValue`              | Boolean parameter                          |
+| Password      | `password(...)`     | `defaultValue`              | Password parameter                         |
+| Choice        | `choice(...)`       | `choices` + default (first) | String parameter, value must be a choice   |
+| Image Tag     | `imageTag(...)`     | `defaultTag`                | String parameter                           |
+| Active Choice | `activeChoice(...)` | visibility                  | String parameter                           |
+| Separator     | `separator(...)`    | visibility                  | --                                         |
 
 ### Job Configuration UI
 
@@ -153,21 +152,24 @@ You can also configure the plugin through the Jenkins UI:
 2. Click **Add Parameter** and select **Hot Reload Parameters**.
 3. Fill in the Git repository URL, credentials, file path, trigger parameter name, and default branch.
 
-### Cache Management
+## Security
 
-The plugin caches fetched file contents for 60 seconds. To force a refresh, an administrator can hit the clear-cache endpoint:
+- Both endpoints used by the Build page require **Build** permission on the job. The repository URL, credentials and file path are read from the job's own configuration; nothing about the repository is accepted from the browser.
+- When a build is submitted, the plugin fetches the parameter file for the selected branch again on the server. A submitted parameter is accepted only if it is declared on the job (handled by Jenkins core as usual) or defined in that branch's `parameters {}` block, and it is typed according to that definition. Anything else is rejected with `400 Bad Request`.
+- Only parameter names taken from the branch's file are added to the build's SECURITY-170 allow-list, so they reach `params.*` and the build environment. Whoever can commit to the configured repository therefore controls which parameter names a job accepts, in the same way they already control the job's `Jenkinsfile`.
+
+## Cache Management
+
+Fetched files are cached for 60 seconds. An administrator can drop the cache with a `POST` request (requires **Administer**):
 
 ```
-GET ${JENKINS_URL}/descriptorByName/io.github.zeeshan.hotreloadparams.HotReloadParameterDefinition/clearCache
+curl -X POST -u USER:API_TOKEN "$JENKINS_URL/descriptorByName/io.github.zeeshan.hotreloadparams.HotReloadParameterDefinition/clearCache"
 ```
-
-This requires `Jenkins.ADMINISTER` permission.
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for instructions on building the plugin
-from source and running it locally.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for instructions on building the plugin from source and running it locally.
 
 ## License
 
-See [LICENSE](LICENSE) for details.
+Licensed under the [Apache License, Version 2.0](LICENSE).

@@ -3,19 +3,21 @@
 ## Build Locally
 
 ```bash
-mvn clean package
+mvn clean verify
 ```
 
 Artifacts are produced in `target/`:
 
 - `target/hot-reload-params.hpi` -- the installable plugin file
-- `target/hot-reload-params.jar` -- the JAR library
 
 ## Run Tests
 
 ```bash
 mvn test
 ```
+
+The tests create a throw-away local Git repository and exercise the plugin's
+endpoints against a `JenkinsRule` instance, so no network access is needed.
 
 ## Build with Docker
 
@@ -46,18 +48,27 @@ Jenkins will be available at `http://localhost:8080/jenkins/`.
 
 ```
 src/main/java/io/github/zeeshan/hotreloadparams/
-  HotReloadParameterDefinition.java   # ParameterDefinition extension + AJAX descriptor
-  HotReloadParameterValue.java        # Composite ParameterValue (env var injection)
+  HotReloadParameterDefinition.java   # ParameterDefinition + descriptor with the fetchParams / triggerBuild endpoints
   ConfigFetcher.java                  # JGit-based Git file fetcher with caching
   ParamConfigParser.java              # Structural Groovy DSL parser
-  model/
-    ParamType.java                    # Enum of supported DSL parameter types
-    ParamConfig.java                  # Parsed parameter config data class
 
 src/main/resources/
   index.jelly                         # Plugin description
-    .../HotReloadParameterDefinition/
+  io/github/zeeshan/hotreloadparams/HotReloadParameterDefinition/
     config.jelly                      # Job configuration form
     index.jelly                       # Build-with-Parameters page (JS injection)
-    hot-reload-params.js              # Client-side AJAX logic
+    hot-reload-params.js              # Client-side logic
 ```
+
+### Request flow
+
+1. `index.jelly` renders a marker element carrying the job name, the trigger
+   parameter name and the descriptor URL, and loads `hot-reload-params.js`.
+2. The script POSTs `job` + `triggerValue` to `fetchParams`. The descriptor
+   resolves the job, checks `Item.BUILD`, reads the Git configuration from the
+   job's `HotReloadParameterDefinition`, fetches and parses the file and
+   returns the parameter list as JSON.
+3. The script updates / hides / creates parameter rows and points the Build
+   form at `triggerBuild`.
+4. `triggerBuild` re-fetches the file for the submitted trigger value and
+   accepts only parameters declared on the job or defined in that file.

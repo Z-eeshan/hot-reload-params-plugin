@@ -7,7 +7,7 @@
     <parent>
         <groupId>org.jenkins-ci.plugins</groupId>
         <artifactId>plugin</artifactId>
-        <version>6.2211.v27f680c93c53</version>
+        <version>6.2236.v12dd4c483242</version>
         <relativePath/>
     </parent>
 
@@ -43,11 +43,13 @@
         <changelist>999999-SNAPSHOT</changelist>
         <gitHubRepo>jenkinsci/hot-reload-params-plugin</gitHubRepo>
         <!-- https://www.jenkins.io/doc/developer/plugin-development/choosing-jenkins-baseline/ -->
-        <jenkins.baseline>2.528</jenkins.baseline>
+        <jenkins.baseline>2.541</jenkins.baseline>
         <jenkins.version>${jenkins.baseline}.3</jenkins.version>
         <hpi.strictBundledArtifacts>true</hpi.strictBundledArtifacts>
         <ban-deprecated-stapler.skip>false</ban-deprecated-stapler.skip>
         <ban-commons-lang-2.skip>false</ban-commons-lang-2.skip>
+        <ban-junit4-imports.skip>false</ban-junit4-imports.skip>
+        <banObsoleteDependencyOverrides.skip>false</banObsoleteDependencyOverrides.skip>
     </properties>
 
     <repositories>
@@ -68,7 +70,7 @@
             <dependency>
                 <groupId>io.jenkins.tools.bom</groupId>
                 <artifactId>bom-${jenkins.baseline}.x</artifactId>
-                <version>6607.v3ed3d8ddfed8</version>
+                <version>7002.v028a_3607ddc8</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
@@ -76,37 +78,35 @@
     </dependencyManagement>
 
     <dependencies>
+        <!-- Provides JGit, used to read the parameter file from Git -->
         <dependency>
             <groupId>org.jenkins-ci.plugins</groupId>
             <artifactId>git-client</artifactId>
         </dependency>
         <dependency>
             <groupId>org.jenkins-ci.plugins</groupId>
-            <artifactId>git</artifactId>
-        </dependency>
-
-        <dependency>
-            <groupId>org.jenkins-ci.plugins</groupId>
             <artifactId>credentials</artifactId>
         </dependency>
         <dependency>
-            <groupId>org.jenkins-ci.plugins</groupId>
-            <artifactId>plain-credentials</artifactId>
-        </dependency>
-
-        <dependency>
             <groupId>io.jenkins.plugins</groupId>
             <artifactId>caffeine-api</artifactId>
-            <version>3.2.4-208.v7e2da_a_7db_82b_</version>
+        </dependency>
+
+        <!-- Test dependencies: used to verify parameter propagation into Pipeline builds -->
+        <dependency>
+            <groupId>org.jenkins-ci.plugins.workflow</groupId>
+            <artifactId>workflow-job</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.jenkins-ci.plugins.workflow</groupId>
+            <artifactId>workflow-cps</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.jenkins-ci.plugins.workflow</groupId>
+            <artifactId>workflow-basic-steps</artifactId>
+            <scope>test</scope>
         </dependency>
     </dependencies>
-
-    <build>
-        <plugins>
-            <plugin>
-                <groupId>org.jenkins-ci.tools</groupId>
-                <artifactId>maven-hpi-plugin</artifactId>
-            </plugin>
-        </plugins>
-    </build>
 </project>
